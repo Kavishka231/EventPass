@@ -1,0 +1,37 @@
+spring:
+  application.name: eventpass
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/eventpass}
+    username: ${DATABASE_USERNAME:eventpass}
+    password: ${DATABASE_PASSWORD:eventpass}
+  jpa:
+    hibernate.ddl-auto: validate
+    open-in-view: false
+  data.redis:
+    host: ${REDIS_HOST:localhost}
+    port: ${REDIS_PORT:6379}
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: eventpass
+      auto-offset-reset: earliest
+  jackson:
+    default-property-inclusion: non_null
+server:
+  shutdown: graceful
+  error.include-stacktrace: never
+management:
+  endpoints.web.exposure.include: health,info,prometheus
+  endpoint.health:
+    probes.enabled: true
+    show-details: when_authorized
+  health:
+    livenessstate.enabled: true
+    readinessstate.enabled: true
+eventpass:
+  jwt:
+    secret: ${JWT_SECRET:local-development-secret-change-before-production}
+    access-ttl: PT15M
+    refresh-ttl: P30D
+  booking.hold-ttl: PT5M
+springdoc.swagger-ui.path: /swagger-ui.html

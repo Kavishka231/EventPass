@@ -1,0 +1,4 @@
+spring:
+  kafka.listener.auto-startup: false
+  jpa.show-sql: false
+eventpass.jwt.secret: integration-test-secret-at-least-32-characters-long
