@@ -1,7 +1,9 @@
 package com.eventpass.booking;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.eventpass.common.error.ApiException;
 import com.eventpass.event.*;
 import com.eventpass.payment.PaymentRepository;
 import com.eventpass.seat.*;
@@ -122,6 +124,128 @@ class ConcurrentBookingIntegrationTest {
     assertThat(bookings.count()).isEqualTo(1);
     assertThat(payments.count()).isEqualTo(1);
     assertThat(tickets.count()).isEqualTo(1);
+  }
+
+  @Test
+  void sameIdempotencyKeyAndRequestReturnsTheOriginalBooking() {
+    BookingFixture fixture = fixture();
+    long bookingsBefore = bookings.count();
+    BookingController.CreateBookingRequest request = fixture.request();
+
+    BookingController.BookingResponse first =
+        service.create(request, "same-request-key", fixture.customer());
+    BookingController.BookingResponse replay =
+        service.create(request, "same-request-key", fixture.customer());
+
+    assertThat(replay.id()).isEqualTo(first.id());
+    assertThat(replay.reference()).isEqualTo(first.reference());
+    assertThat(bookings.count()).isEqualTo(bookingsBefore + 1);
+  }
+
+  @Test
+  void sameIdempotencyKeyWithDifferentPayloadIsRejected() {
+    BookingFixture firstFixture = fixture();
+    BookingFixture differentFixture = fixture();
+    String key = "payload-mismatch-key";
+    service.create(firstFixture.request(), key, firstFixture.customer());
+
+    assertThatThrownBy(
+            () -> service.create(differentFixture.request(), key, firstFixture.customer()))
+        .isInstanceOfSatisfying(
+            ApiException.class,
+            exception -> assertThat(exception.code()).isEqualTo("IDEMPOTENCY_PAYLOAD_MISMATCH"));
+  }
+
+  @Test
+  void simultaneousSameKeyRequestsCreateOneBookingAndReturnOneResult() throws Exception {
+    BookingFixture fixture = fixture();
+    long bookingsBefore = bookings.count();
+    long paymentsBefore = payments.count();
+    String key = "simultaneous-key-" + UUID.randomUUID();
+    CountDownLatch ready = new CountDownLatch(2);
+    CountDownLatch start = new CountDownLatch(1);
+    Queue<UUID> bookingIds = new ConcurrentLinkedQueue<>();
+    Queue<Throwable> failures = new ConcurrentLinkedQueue<>();
+
+    try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+      List<Future<?>> futures = new ArrayList<>();
+      for (int attempt = 0; attempt < 2; attempt++) {
+        futures.add(
+            executor.submit(
+                () -> {
+                  ready.countDown();
+                  start.await();
+                  try {
+                    bookingIds.add(service.create(fixture.request(), key, fixture.customer()).id());
+                  } catch (Throwable throwable) {
+                    failures.add(throwable);
+                  }
+                  return null;
+                }));
+      }
+      ready.await();
+      start.countDown();
+      for (Future<?> future : futures) future.get();
+    }
+
+    assertThat(failures).isEmpty();
+    assertThat(bookingIds).hasSize(2).containsOnly(bookingIds.peek());
+    assertThat(bookings.count()).isEqualTo(bookingsBefore + 1);
+    assertThat(payments.count()).isEqualTo(paymentsBefore + 1);
+  }
+
+  @Test
+  void oversizedIdempotencyKeyIsRejectedBeforeBookingCreation() {
+    BookingFixture fixture = fixture();
+    long bookingsBefore = bookings.count();
+
+    assertThatThrownBy(() -> service.create(fixture.request(), "x".repeat(101), fixture.customer()))
+        .isInstanceOfSatisfying(
+            ApiException.class,
+            exception -> assertThat(exception.code()).isEqualTo("INVALID_IDEMPOTENCY_KEY"));
+    assertThat(bookings.count()).isEqualTo(bookingsBefore);
+  }
+
+  private BookingFixture fixture() {
+    String suffix = UUID.randomUUID().toString();
+    User organizer = user("organizer-" + suffix + "@example.com", User.Role.ORGANIZER);
+    User customer = user("customer-" + suffix + "@example.com", User.Role.CUSTOMER);
+    Venue venue = new Venue();
+    venue.setName("Arena " + suffix);
+    venue.setAddress("1 Test Road");
+    venue.setCity("Colombo");
+    venue.setCapacity(1);
+    venues.save(venue);
+    Seat seat = new Seat();
+    seat.setVenue(venue);
+    seat.setSection("A");
+    seat.setRowNumber("1");
+    seat.setSeatNumber("1");
+    seat.setSeatType(Seat.Type.REGULAR);
+    seats.save(seat);
+    Event event = new Event();
+    event.setName("Event " + suffix);
+    event.setDescription("Idempotency integration test");
+    event.setCategory("TEST");
+    event.setStartDateTime(Instant.now().plusSeconds(86400));
+    event.setEndDateTime(Instant.now().plusSeconds(90000));
+    event.setVenue(venue);
+    event.setOrganizer(organizer);
+    event.setStatus(Event.Status.PUBLISHED);
+    events.save(event);
+    EventSeat eventSeat = new EventSeat();
+    eventSeat.setEvent(event);
+    eventSeat.setSeat(seat);
+    eventSeat.setPrice(new BigDecimal("100.00"));
+    inventory.save(eventSeat);
+    return new BookingFixture(event, eventSeat, customer);
+  }
+
+  private record BookingFixture(Event event, EventSeat eventSeat, User customer) {
+    BookingController.CreateBookingRequest request() {
+      return new BookingController.CreateBookingRequest(
+          event.getId(), List.of(eventSeat.getId()), "tok_success");
+    }
   }
 
   private User user(String email, User.Role role) {

@@ -10,7 +10,12 @@ import java.util.*;
 import lombok.*;
 
 @Entity
-@Table(name = "bookings")
+@Table(
+    name = "bookings",
+    uniqueConstraints =
+        @UniqueConstraint(
+            name = "uk_booking_idempotency_scope",
+            columnNames = {"user_id", "idempotency_operation", "idempotency_key"}))
 @Getter
 @Setter
 @NoArgsConstructor
@@ -39,8 +44,14 @@ public class Booking extends BaseEntity {
   @Column(name = "expires_at", nullable = false)
   private Instant expiresAt;
 
-  @Column(name = "idempotency_key", nullable = false, unique = true)
+  @Column(name = "idempotency_key", nullable = false, length = 100)
   private String idempotencyKey;
+
+  @Column(name = "idempotency_operation", nullable = false, length = 40)
+  private String idempotencyOperation;
+
+  @Column(name = "idempotency_request_hash", nullable = false, length = 64)
+  private String idempotencyRequestHash;
 
   @OneToMany(mappedBy = "booking", cascade = CascadeType.ALL, orphanRemoval = true)
   private List<BookingItem> items = new ArrayList<>();

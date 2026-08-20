@@ -8,10 +8,12 @@ import java.time.Instant;
 import java.util.*;
 import org.springframework.http.*;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/v1/bookings")
+@Validated
 public class BookingController {
   private final BookingService service;
 
@@ -37,7 +39,7 @@ public class BookingController {
   @PostMapping
   ResponseEntity<BookingResponse> create(
       @Valid @RequestBody CreateBookingRequest r,
-      @RequestHeader("Idempotency-Key") @NotBlank String key,
+      @RequestHeader("Idempotency-Key") @NotBlank @Size(max = 100) String key,
       @AuthenticationPrincipal User u) {
     return ResponseEntity.status(HttpStatus.CREATED).body(service.create(r, key, u));
   }

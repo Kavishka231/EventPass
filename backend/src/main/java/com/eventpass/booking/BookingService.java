@@ -11,6 +11,10 @@ import com.eventpass.user.User;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.math.BigDecimal;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.time.*;
 import java.util.*;
@@ -24,6 +28,8 @@ public class BookingService {
   private static final String BOOKING_TOPIC = "booking.events";
   private static final String PAYMENT_TOPIC = "payment.events";
   private static final String TICKET_TOPIC = "ticket.events";
+  private static final String IDEMPOTENCY_OPERATION = "BOOKING_CREATE";
+  private static final int MAX_IDEMPOTENCY_KEY_LENGTH = 100;
 
   private final BookingRepository bookings;
   private final EventRepository events;
@@ -70,14 +76,19 @@ public class BookingService {
   public BookingController.BookingResponse create(
       BookingController.CreateBookingRequest request, String idempotencyKey, User user) {
     bookingAttempts.increment();
-    Optional<Booking> previous = bookings.findByIdempotencyKey(idempotencyKey);
+    validateIdempotencyKey(idempotencyKey);
+    String requestHash = requestHash(request);
+    bookings.acquireIdempotencyLock(idempotencyLockId(user.getId(), idempotencyKey));
+    Optional<Booking> previous =
+        bookings.findByUserIdAndIdempotencyOperationAndIdempotencyKey(
+            user.getId(), IDEMPOTENCY_OPERATION, idempotencyKey);
     if (previous.isPresent()) {
       Booking booking = previous.get();
-      if (!booking.getUser().getId().equals(user.getId())) {
+      if (!booking.getIdempotencyRequestHash().equals(requestHash)) {
         throw new ApiException(
             HttpStatus.CONFLICT,
-            "IDEMPOTENCY_KEY_REUSED",
-            "Idempotency key belongs to another request.");
+            "IDEMPOTENCY_PAYLOAD_MISMATCH",
+            "Idempotency key was already used with a different booking request.");
       }
       if (booking.getStatus() == Booking.Status.FAILED) {
         throw paymentFailed();
@@ -112,7 +123,7 @@ public class BookingService {
       List<EventSeat> inventory = seats.lockForBooking(event.getId(), requestedSeats);
       validateAvailability(requestedSeats, inventory);
 
-      Booking booking = newBooking(event, user, idempotencyKey, inventory);
+      Booking booking = newBooking(event, user, idempotencyKey, requestHash, inventory);
       bookings.save(booking);
       outbox.record(
           BOOKING_TOPIC,
@@ -250,7 +261,11 @@ public class BookingService {
   }
 
   private Booking newBooking(
-      Event event, User user, String idempotencyKey, List<EventSeat> inventory) {
+      Event event,
+      User user,
+      String idempotencyKey,
+      String requestHash,
+      List<EventSeat> inventory) {
     Booking booking = new Booking();
     booking.setBookingReference(
         "EVP-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase());
@@ -259,6 +274,8 @@ public class BookingService {
     booking.setCurrency("LKR");
     booking.setExpiresAt(Instant.now().plus(holdTtl));
     booking.setIdempotencyKey(idempotencyKey);
+    booking.setIdempotencyOperation(IDEMPOTENCY_OPERATION);
+    booking.setIdempotencyRequestHash(requestHash);
     booking.setTotalAmount(
         inventory.stream().map(EventSeat::getPrice).reduce(BigDecimal.ZERO, BigDecimal::add));
     inventory.forEach(
@@ -333,5 +350,44 @@ public class BookingService {
   private ApiException paymentFailed() {
     return new ApiException(
         HttpStatus.UNPROCESSABLE_ENTITY, "PAYMENT_FAILED", "Mock payment was declined.");
+  }
+
+  private void validateIdempotencyKey(String key) {
+    if (key == null || key.isBlank() || key.length() > MAX_IDEMPOTENCY_KEY_LENGTH) {
+      throw new ApiException(
+          HttpStatus.BAD_REQUEST,
+          "INVALID_IDEMPOTENCY_KEY",
+          "Idempotency-Key must contain between 1 and 100 characters.");
+    }
+  }
+
+  private String requestHash(BookingController.CreateBookingRequest request) {
+    List<UUID> normalizedSeats = request.eventSeatIds().stream().sorted().toList();
+    String canonical =
+        IDEMPOTENCY_OPERATION
+            + "|"
+            + request.eventId()
+            + "|"
+            + normalizedSeats
+            + "|"
+            + request.paymentToken();
+    return hexDigest(canonical);
+  }
+
+  private long idempotencyLockId(UUID userId, String key) {
+    byte[] digest = digest(userId + "|" + IDEMPOTENCY_OPERATION + "|" + key);
+    return ByteBuffer.wrap(digest).getLong();
+  }
+
+  private String hexDigest(String value) {
+    return HexFormat.of().formatHex(digest(value));
+  }
+
+  private byte[] digest(String value) {
+    try {
+      return MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
+    } catch (NoSuchAlgorithmException exception) {
+      throw new IllegalStateException("SHA-256 is not available", exception);
+    }
   }
 }

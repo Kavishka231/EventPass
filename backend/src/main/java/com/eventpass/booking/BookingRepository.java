@@ -3,9 +3,15 @@ package com.eventpass.booking;
 import java.time.Instant;
 import java.util.*;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 public interface BookingRepository extends JpaRepository<Booking, UUID> {
-  Optional<Booking> findByIdempotencyKey(String key);
+  Optional<Booking> findByUserIdAndIdempotencyOperationAndIdempotencyKey(
+      UUID userId, String operation, String key);
+
+  @Query(value = "SELECT pg_advisory_xact_lock(:lockId)", nativeQuery = true)
+  void acquireIdempotencyLock(@Param("lockId") long lockId);
 
   List<Booking> findAllByUserIdOrderByCreatedAtDesc(UUID userId);
 
