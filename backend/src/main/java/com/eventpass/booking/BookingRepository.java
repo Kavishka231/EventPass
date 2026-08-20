@@ -3,6 +3,7 @@ package com.eventpass.booking;
 import java.time.Instant;
 import java.util.*;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -18,4 +19,8 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
   long countByStatus(Booking.Status status);
 
   List<Booking> findTop100ByStatusAndExpiresAtBefore(Booking.Status status, Instant expiresAt);
+
+  @Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+  @Query("select b from Booking b where b.id = :id")
+  Optional<Booking> lockById(@Param("id") UUID id);
 }

@@ -11,7 +11,7 @@ Swagger/OpenAPI is available at `/swagger-ui.html` and `/v3/api-docs`.
 - Customer: `POST /api/v1/bookings` with required `Idempotency-Key`, plus list, detail, and cancellation endpoints
 - `GET /api/v1/tickets`
 
-Use `tok_success` for an approved mock payment and `tok_fail` for a declined payment. No card data is accepted.
+Use `tok_success` for an approved mock payment and `tok_fail` for a declined payment. `tok_unknown` simulates a provider response with no definitive outcome; the API returns `503 PAYMENT_OUTCOME_UNKNOWN`, retains the seat hold, and flags the durable payment for reconciliation. Do not retry an unknown outcome with a new idempotency key. No card data is accepted.
 
 `Idempotency-Key` accepts 1–100 characters and is scoped to the authenticated user and booking-create operation. Repeating the same key and payload returns the original booking. Reusing that key with a different event, seat selection, or payment token returns `409 IDEMPOTENCY_PAYLOAD_MISMATCH`. Concurrent same-key requests are serialized by PostgreSQL and create only one booking.
 

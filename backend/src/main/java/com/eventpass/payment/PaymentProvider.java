@@ -8,5 +8,5 @@ public interface PaymentProvider {
 
   boolean refund(String paymentReference, BigDecimal amount, String currency);
 
-  record PaymentResult(boolean successful, String reference) {}
+  record PaymentResult(boolean successful, String reference, String failureCode) {}
 }
