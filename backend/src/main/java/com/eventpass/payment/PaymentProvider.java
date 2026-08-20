@@ -1,6 +1,12 @@
 package com.eventpass.payment;
+
 import java.math.BigDecimal;
+
 public interface PaymentProvider {
-  PaymentResult charge(String providerToken,BigDecimal amount,String currency,String idempotencyKey);
-  record PaymentResult(boolean successful,String reference){}
+  PaymentResult charge(
+      String providerToken, BigDecimal amount, String currency, String idempotencyKey);
+
+  boolean refund(String paymentReference, BigDecimal amount, String currency);
+
+  record PaymentResult(boolean successful, String reference) {}
 }
