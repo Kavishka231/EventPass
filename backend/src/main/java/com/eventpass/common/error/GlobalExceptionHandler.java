@@ -1,6 +1,7 @@
 package com.eventpass.common.error;
 
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.ConstraintViolationException;
 import java.time.Instant;
 import java.util.stream.Collectors;
 import org.slf4j.*;
@@ -26,6 +27,16 @@ public class GlobalExceptionHandler {
     String message =
         e.getBindingResult().getFieldErrors().stream()
             .map(x -> x.getField() + ": " + x.getDefaultMessage())
+            .collect(Collectors.joining(", "));
+    return response(HttpStatus.BAD_REQUEST, "VALIDATION_FAILED", message, r);
+  }
+
+  @ExceptionHandler(ConstraintViolationException.class)
+  ResponseEntity<ErrorResponse> constraintValidation(
+      ConstraintViolationException e, HttpServletRequest r) {
+    String message =
+        e.getConstraintViolations().stream()
+            .map(violation -> violation.getPropertyPath() + ": " + violation.getMessage())
             .collect(Collectors.joining(", "));
     return response(HttpStatus.BAD_REQUEST, "VALIDATION_FAILED", message, r);
   }
