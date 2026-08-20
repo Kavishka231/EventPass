@@ -13,4 +13,10 @@ Booking uses defense in depth:
 5. Payment succeeds before `HELD` becomes `SOLD`; transaction rollback prevents partial bookings.
 6. Unique booking references, ticket tokens, payment references, and idempotency keys provide durable duplication barriers.
 
-Kafka dependencies and topic configuration are present for the next milestone. Domain event publication should use a transactional outbox so database commits cannot be separated from event delivery.
+## Event delivery
+
+Booking transactions write an event envelope and business state to PostgreSQL atomically. The scheduled outbox publisher retries pending rows to `booking.events`, `payment.events`, and `ticket.events`, recording bounded failures and publish timestamps. Delivery is at least once. The notification consumer claims each event ID in `processed_events`, so duplicate Kafka delivery does not repeat consumer work.
+
+## Operational boundaries
+
+Request and correlation filters propagate safe identifiers into structured production logs. Redis rate limits sensitive write endpoints. Actuator readiness evaluates PostgreSQL, Redis, and Kafka, while liveness remains tied to application process state. Prometheus exports HTTP metrics and explicit booking, payment-failure, and seat-lock counters.

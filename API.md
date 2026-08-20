@@ -5,8 +5,12 @@ Swagger/OpenAPI is available at `/swagger-ui.html` and `/v3/api-docs`.
 - `POST /api/v1/auth/register`, `/login`, `/refresh`, `/logout`
 - `GET /api/v1/events` supports `category`, `city`, `startDate`, `endDate`, `status`, `page`, `size`, and `sort`
 - `GET /api/v1/events/{id}` and `/api/v1/events/{id}/seats`
-- Organizer/admin: `POST`, `PUT`, `DELETE /api/v1/events[/{id}]`
+- Public: paginated `GET /api/v1/venues` and `GET /api/v1/venues/{id}`
+- Admin: venue CRUD, `POST /api/v1/venues/{venueId}/seats`, user role/status management, and `/api/v1/admin/statistics`
+- Organizer/admin: `POST`, `PUT`, `DELETE /api/v1/events[/{id}]` and `PUT /api/v1/events/{eventId}/inventory`
 - Customer: `POST /api/v1/bookings` with required `Idempotency-Key`, plus list, detail, and cancellation endpoints
 - `GET /api/v1/tickets`
 
 Use `tok_success` for an approved mock payment and `tok_fail` for a declined payment. No card data is accepted.
+
+New events must start as `DRAFT`; seat pricing must be configured before `PUBLISHED`. Public event and inventory reads expose published events only. Confirmed bookings may be cancelled more than 24 hours before an event; cancellation refunds the payment, cancels tickets, and releases seats.
