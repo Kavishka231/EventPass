@@ -15,6 +15,12 @@ spring:
     consumer:
       group-id: eventpass
       auto-offset-reset: earliest
+      enable-auto-commit: false
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    listener:
+      ack-mode: record
+      missing-topics-fatal: false
   jackson:
     default-property-inclusion: non_null
 server:
@@ -34,4 +40,10 @@ eventpass:
     access-ttl: PT15M
     refresh-ttl: P30D
   booking.hold-ttl: PT5M
+  bootstrap-admin:
+    email: ${BOOTSTRAP_ADMIN_EMAIL:}
+    password: ${BOOTSTRAP_ADMIN_PASSWORD:}
+  outbox:
+    enabled: ${OUTBOX_ENABLED:true}
+    publish-delay: PT2S
 springdoc.swagger-ui.path: /swagger-ui.html

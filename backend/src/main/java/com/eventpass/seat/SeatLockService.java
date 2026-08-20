@@ -1,5 +1,7 @@
 package com.eventpass.seat;
 
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Duration;
 import java.util.*;
 import org.springframework.beans.factory.annotation.Value;
@@ -9,10 +11,35 @@ import org.springframework.stereotype.Service;
 
 @Service
 public class SeatLockService {
-  private static final DefaultRedisScript<Long> RELEASE=new DefaultRedisScript<>("if redis.call('get',KEYS[1])==ARGV[1] then return redis.call('del',KEYS[1]) else return 0 end",Long.class);
-  private final StringRedisTemplate redis; private final Duration ttl;
-  public SeatLockService(StringRedisTemplate redis,@Value("${eventpass.booking.hold-ttl}")Duration ttl){this.redis=redis;this.ttl=ttl;}
-  public boolean acquire(UUID eventId,UUID seatId,String owner){return Boolean.TRUE.equals(redis.opsForValue().setIfAbsent(key(eventId,seatId),owner,ttl));}
-  public void release(UUID eventId,UUID seatId,String owner){redis.execute(RELEASE,List.of(key(eventId,seatId)),owner);}
-  private String key(UUID event,UUID seat){return "seat-lock:"+event+":"+seat;}
+  private static final DefaultRedisScript<Long> RELEASE =
+      new DefaultRedisScript<>(
+          "if redis.call('get',KEYS[1])==ARGV[1] then return redis.call('del',KEYS[1]) else return 0 end",
+          Long.class);
+  private final StringRedisTemplate redis;
+  private final Duration ttl;
+  private final Counter failures;
+
+  public SeatLockService(
+      StringRedisTemplate redis,
+      @Value("${eventpass.booking.hold-ttl}") Duration ttl,
+      MeterRegistry meterRegistry) {
+    this.redis = redis;
+    this.ttl = ttl;
+    this.failures = meterRegistry.counter("eventpass.seat.lock.failures");
+  }
+
+  public boolean acquire(UUID eventId, UUID seatId, String owner) {
+    boolean acquired =
+        Boolean.TRUE.equals(redis.opsForValue().setIfAbsent(key(eventId, seatId), owner, ttl));
+    if (!acquired) failures.increment();
+    return acquired;
+  }
+
+  public void release(UUID eventId, UUID seatId, String owner) {
+    redis.execute(RELEASE, List.of(key(eventId, seatId)), owner);
+  }
+
+  private String key(UUID event, UUID seat) {
+    return "seat-lock:" + event + ":" + seat;
+  }
 }
