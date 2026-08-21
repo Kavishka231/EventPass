@@ -7,6 +7,8 @@ import com.eventpass.common.error.ApiException;
 import com.eventpass.event.*;
 import com.eventpass.payment.Payment;
 import com.eventpass.payment.PaymentRepository;
+import com.eventpass.payment.Refund;
+import com.eventpass.payment.RefundRepository;
 import com.eventpass.seat.*;
 import com.eventpass.ticket.TicketRepository;
 import com.eventpass.user.*;
@@ -55,6 +57,7 @@ class ConcurrentBookingIntegrationTest {
   @Autowired EventSeatRepository inventory;
   @Autowired BookingRepository bookings;
   @Autowired PaymentRepository payments;
+  @Autowired RefundRepository refunds;
   @Autowired TicketRepository tickets;
 
   @Test
@@ -286,6 +289,90 @@ class ConcurrentBookingIntegrationTest {
     assertThat(payments.findAllByReconciliationStatus(Payment.ReconciliationStatus.PENDING))
         .extracting(Payment::getId)
         .contains(payment.getId());
+  }
+
+  @Test
+  void cancellationPersistsCompletedRefundBeforeReleasingTheSeat() {
+    long refundsBefore = refunds.count();
+    BookingFixture fixture = fixture();
+    fixture.event().setStartDateTime(Instant.now().plusSeconds(172800));
+    fixture.event().setEndDateTime(Instant.now().plusSeconds(176400));
+    events.save(fixture.event());
+    BookingController.BookingResponse created =
+        service.create(
+            fixture.request(), "refundable-booking-" + UUID.randomUUID(), fixture.customer());
+
+    service.cancel(created.id(), fixture.customer());
+
+    Booking booking = bookings.findById(created.id()).orElseThrow();
+    Payment payment = payments.findByBookingId(created.id()).orElseThrow();
+    Refund refund = refunds.findByPaymentId(payment.getId()).orElseThrow();
+    assertThat(refunds.count()).isEqualTo(refundsBefore + 1);
+    assertThat(refund.getPayment().getId()).isEqualTo(payment.getId());
+    assertThat(refund.getBooking().getId()).isEqualTo(booking.getId());
+    assertThat(refund.getAmount()).isEqualByComparingTo(payment.getAmount());
+    assertThat(refund.getCurrency()).isEqualTo(payment.getCurrency());
+    assertThat(refund.getStatus()).isEqualTo(Refund.Status.SUCCESS);
+    assertThat(refund.getProviderReference()).startsWith("mock_refund_");
+    assertThat(refund.getIdempotencyKey()).isEqualTo("booking-refund:" + booking.getId());
+    assertThat(refund.getAttemptedAt()).isNotNull();
+    assertThat(refund.getCompletedAt()).isNotNull();
+    assertThat(refund.getFailureCode()).isNull();
+    assertThat(refund.getLastError()).isNull();
+    assertThat(booking.getStatus()).isEqualTo(Booking.Status.CANCELLED);
+    assertThat(payment.getStatus()).isEqualTo(Payment.Status.REFUNDED);
+    assertThat(inventory.findById(fixture.eventSeat().getId()).orElseThrow().getStatus())
+        .isEqualTo(EventSeat.Status.AVAILABLE);
+    assertThat(tickets.findAllByBookingId(booking.getId()))
+        .allMatch(ticket -> ticket.getStatus() == com.eventpass.ticket.Ticket.Status.CANCELLED);
+  }
+
+  @Test
+  void simultaneousCancellationsCreateExactlyOneRefund() throws Exception {
+    long refundsBefore = refunds.count();
+    BookingFixture fixture = fixture();
+    fixture.event().setStartDateTime(Instant.now().plusSeconds(172800));
+    fixture.event().setEndDateTime(Instant.now().plusSeconds(176400));
+    events.save(fixture.event());
+    BookingController.BookingResponse created =
+        service.create(
+            fixture.request(), "concurrent-refund-" + UUID.randomUUID(), fixture.customer());
+    CountDownLatch ready = new CountDownLatch(2);
+    CountDownLatch start = new CountDownLatch(1);
+    Queue<Throwable> failures = new ConcurrentLinkedQueue<>();
+
+    try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+      List<Future<?>> calls = new ArrayList<>();
+      for (int request = 0; request < 2; request++) {
+        calls.add(
+            executor.submit(
+                () -> {
+                  ready.countDown();
+                  start.await();
+                  try {
+                    service.cancel(created.id(), fixture.customer());
+                  } catch (Throwable throwable) {
+                    failures.add(throwable);
+                  }
+                  return null;
+                }));
+      }
+      ready.await();
+      start.countDown();
+      for (Future<?> call : calls) call.get();
+    }
+
+    Payment payment = payments.findByBookingId(created.id()).orElseThrow();
+    assertThat(refunds.count()).isEqualTo(refundsBefore + 1);
+    assertThat(refunds.findByPaymentId(payment.getId()))
+        .get()
+        .extracting(Refund::getStatus)
+        .isEqualTo(Refund.Status.SUCCESS);
+    assertThat(failures)
+        .allMatch(
+            throwable ->
+                throwable instanceof ApiException exception
+                    && exception.code().equals("REFUND_PENDING"));
   }
 
   private BookingFixture fixture() {

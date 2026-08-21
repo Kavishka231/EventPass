@@ -24,7 +24,8 @@ class MockPaymentProviderTest {
 
   @Test
   void refundsSuccessfulSandboxPayment() {
-    assertThat(provider.refund("mock_payment", BigDecimal.TEN, "LKR")).isTrue();
+    assertThat(provider.refund("mock_payment", BigDecimal.TEN, "LKR", "refund-key").successful())
+        .isTrue();
   }
 
   @Test
