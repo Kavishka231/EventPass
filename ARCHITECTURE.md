@@ -10,8 +10,9 @@ Booking uses defense in depth:
 2. Locks contain an opaque owner token and are released through a compare-and-delete Lua script.
 3. PostgreSQL event-seat rows are pessimistically locked in sorted order within the booking transaction.
 4. Availability is revalidated from the database; prices are read from event inventory, never accepted from clients.
-5. Payment succeeds before `HELD` becomes `SOLD`; transaction rollback prevents partial bookings.
-6. Unique booking references, ticket tokens, payment references, and idempotency keys provide durable duplication barriers.
+5. A short transaction commits the `PENDING` booking, `HELD` inventory, and `PENDING` payment before the provider is called without an open database transaction.
+6. Separate locked transactions record an attempt and finalize success or decline. Provider adapters receive the booking idempotency key; the sandbox base implementation atomically replays its first definitive same-key result and rejects changed charge details. Ambiguous provider errors leave inventory held and mark the payment `UNKNOWN` with reconciliation `PENDING`; expiration cannot release those seats.
+7. Unique booking references, ticket tokens, payment references, and scoped idempotency keys provide durable duplication barriers.
 
 ## Event delivery
 

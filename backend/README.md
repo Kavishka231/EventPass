@@ -6,7 +6,8 @@ This workspace contains the Java 21 Spring Boot API, Flyway migrations, unit and
 
 - Authentication: BCrypt passwords, JWT access tokens, rotating hashed refresh tokens, logout, active-account enforcement, customer registration, and optional first-admin bootstrap.
 - Management: admin users/roles/statistics and venue/seat definitions; organizer-owned draft events and event-specific priced inventory.
-- Booking: Redis holds, deterministic PostgreSQL row locking, server-calculated totals, user/operation-scoped idempotency keys with request fingerprints and same-key serialization, mock charges/refunds, expiry, cancellation/resale, and secure digital tickets.
+- Booking: Redis holds, deterministic PostgreSQL row locking, server-calculated totals, user/operation-scoped idempotency keys with request fingerprints and same-key serialization, and secure digital tickets.
+- Payments: pending attempts are committed before provider calls; success, decline, provider reference, timestamps, failure codes, and ambiguous outcomes requiring reconciliation are durable. The provider abstraction serializes and replays same-key charges, rejects changed charge details, and forwards the key through provider adapters. Mock refunds, expiry, and cancellation/resale remain supported.
 - Messaging: transactional booking/payment/ticket outbox, retrying Kafka publisher, and an idempotent notification consumer backed by `processed_events`.
 - Operations: Flyway validation, OpenAPI, Actuator probes, Prometheus business metrics, structured production logs, request tracing, rate limits, Docker, and CI.
 - Verification: Spotless and Maven verification pass; Testcontainers proves 20 concurrent buyers yield one booking, one payment, one sold seat, and one ticket.

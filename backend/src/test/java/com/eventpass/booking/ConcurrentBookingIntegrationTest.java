@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.eventpass.common.error.ApiException;
 import com.eventpass.event.*;
+import com.eventpass.payment.Payment;
 import com.eventpass.payment.PaymentRepository;
 import com.eventpass.seat.*;
 import com.eventpass.ticket.TicketRepository;
@@ -58,6 +59,9 @@ class ConcurrentBookingIntegrationTest {
 
   @Test
   void exactlyOneOfTwentyCustomersCanBuyTheSameSeat() throws Exception {
+    long bookingsBefore = bookings.count();
+    long paymentsBefore = payments.count();
+    long ticketsBefore = tickets.count();
     User organizer = user("organizer@example.com", User.Role.ORGANIZER);
     Venue v = new Venue();
     v.setName("Test Arena");
@@ -121,9 +125,9 @@ class ConcurrentBookingIntegrationTest {
     assertThat(successes).hasValue(1);
     assertThat(inventory.findById(es.getId()).orElseThrow().getStatus())
         .isEqualTo(EventSeat.Status.SOLD);
-    assertThat(bookings.count()).isEqualTo(1);
-    assertThat(payments.count()).isEqualTo(1);
-    assertThat(tickets.count()).isEqualTo(1);
+    assertThat(bookings.count()).isEqualTo(bookingsBefore + 1);
+    assertThat(payments.count()).isEqualTo(paymentsBefore + 1);
+    assertThat(tickets.count()).isEqualTo(ticketsBefore + 1);
   }
 
   @Test
@@ -206,6 +210,84 @@ class ConcurrentBookingIntegrationTest {
     assertThat(bookings.count()).isEqualTo(bookingsBefore);
   }
 
+  @Test
+  void successfulPaymentPersistsAttemptProviderReferenceAndCompletion() {
+    BookingFixture fixture = fixture();
+    BookingController.BookingResponse response =
+        service.create(
+            fixture.request("tok_success"),
+            "payment-success-" + UUID.randomUUID(),
+            fixture.customer());
+
+    Payment payment = payments.findByBookingId(response.id()).orElseThrow();
+    assertThat(payment.getStatus()).isEqualTo(Payment.Status.SUCCESS);
+    assertThat(payment.getAttemptedAt()).isNotNull();
+    assertThat(payment.getCompletedAt()).isNotNull();
+    assertThat(payment.getPaymentReference()).startsWith("mock_");
+    assertThat(payment.getReconciliationStatus())
+        .isEqualTo(Payment.ReconciliationStatus.NOT_REQUIRED);
+  }
+
+  @Test
+  void declinedPaymentIsDurablyRecordedAndReleasesInventory() {
+    BookingFixture fixture = fixture();
+    String key = "payment-decline-" + UUID.randomUUID();
+
+    assertThatThrownBy(() -> service.create(fixture.request("tok_fail"), key, fixture.customer()))
+        .isInstanceOfSatisfying(
+            ApiException.class,
+            exception -> assertThat(exception.code()).isEqualTo("PAYMENT_FAILED"));
+
+    Booking booking =
+        bookings
+            .findByUserIdAndIdempotencyOperationAndIdempotencyKey(
+                fixture.customer().getId(), "BOOKING_CREATE", key)
+            .orElseThrow();
+    Payment payment = payments.findByBookingId(booking.getId()).orElseThrow();
+    assertThat(booking.getStatus()).isEqualTo(Booking.Status.FAILED);
+    assertThat(payment.getStatus()).isEqualTo(Payment.Status.FAILED);
+    assertThat(payment.getAttemptedAt()).isNotNull();
+    assertThat(payment.getCompletedAt()).isNotNull();
+    assertThat(payment.getFailureCode()).isEqualTo("MOCK_PAYMENT_DECLINED");
+    assertThat(payment.getPaymentReference()).startsWith("mock_");
+    assertThat(fixture.eventSeat().getId())
+        .satisfies(
+            id ->
+                assertThat(inventory.findById(id).orElseThrow().getStatus())
+                    .isEqualTo(EventSeat.Status.AVAILABLE));
+  }
+
+  @Test
+  void unknownProviderOutcomeIsFlaggedForReconciliationAndKeepsSeatHeld() {
+    BookingFixture fixture = fixture();
+    String key = "payment-unknown-" + UUID.randomUUID();
+
+    assertThatThrownBy(
+            () -> service.create(fixture.request("tok_unknown"), key, fixture.customer()))
+        .isInstanceOfSatisfying(
+            ApiException.class,
+            exception -> assertThat(exception.code()).isEqualTo("PAYMENT_OUTCOME_UNKNOWN"));
+
+    Booking booking =
+        bookings
+            .findByUserIdAndIdempotencyOperationAndIdempotencyKey(
+                fixture.customer().getId(), "BOOKING_CREATE", key)
+            .orElseThrow();
+    Payment payment = payments.findByBookingId(booking.getId()).orElseThrow();
+    assertThat(booking.getStatus()).isEqualTo(Booking.Status.PENDING);
+    assertThat(payment.getStatus()).isEqualTo(Payment.Status.UNKNOWN);
+    assertThat(payment.getAttemptedAt()).isNotNull();
+    assertThat(payment.getCompletedAt()).isNull();
+    assertThat(payment.getPaymentReference()).isNull();
+    assertThat(payment.getReconciliationStatus()).isEqualTo(Payment.ReconciliationStatus.PENDING);
+    assertThat(payment.getLastError()).isNotBlank();
+    assertThat(inventory.findById(fixture.eventSeat().getId()).orElseThrow().getStatus())
+        .isEqualTo(EventSeat.Status.HELD);
+    assertThat(payments.findAllByReconciliationStatus(Payment.ReconciliationStatus.PENDING))
+        .extracting(Payment::getId)
+        .contains(payment.getId());
+  }
+
   private BookingFixture fixture() {
     String suffix = UUID.randomUUID().toString();
     User organizer = user("organizer-" + suffix + "@example.com", User.Role.ORGANIZER);
@@ -243,8 +325,12 @@ class ConcurrentBookingIntegrationTest {
 
   private record BookingFixture(Event event, EventSeat eventSeat, User customer) {
     BookingController.CreateBookingRequest request() {
+      return request("tok_success");
+    }
+
+    BookingController.CreateBookingRequest request(String paymentToken) {
       return new BookingController.CreateBookingRequest(
-          event.getId(), List.of(eventSeat.getId()), "tok_success");
+          event.getId(), List.of(eventSeat.getId()), paymentToken);
     }
   }
 
