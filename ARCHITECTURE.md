@@ -2,6 +2,8 @@
 
 The application is a modular monolith organized by business capability (`auth`, `event`, `seat`, `booking`, `payment`, and `ticket`). Controllers translate HTTP requests, services own state transitions and transaction boundaries, and repositories isolate persistence.
 
+Event publication and cancellation are terminally guarded state transitions. Event cancellation, booking preparation, and inventory configuration share a pessimistic event lock; cancellation waits for transient pending bookings, atomically records `EVENT_CANCELLED` in the outbox, and prevents subsequent booking, pricing, blocking, or republication operations.
+
 ## Booking consistency
 
 Booking uses defense in depth:

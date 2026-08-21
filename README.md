@@ -7,7 +7,7 @@ EventPass is organized as a monorepo with separate backend and frontend workspac
 The backend now includes:
 
 - secure customer registration, short-lived JWT access tokens, rotating hashed refresh tokens, logout, account-state enforcement, and environment-only administrator bootstrap;
-- administrator user/role/statistics APIs, venue management, physical seat creation with capacity checks, organizer-owned events, controlled publication, and per-event pricing/blocking;
+- administrator user/role/statistics APIs, venue management, physical seat creation with capacity checks, organizer-owned events, guarded publication/cancellation transitions, and per-event pricing/blocking;
 - Redis TTL locks plus PostgreSQL row and advisory locks, optimistic versions, server-side pricing, user-scoped request-bound booking idempotency, provider-enforced same-key charge/refund replay, durable payment and refund lifecycles with guarded transitions, concurrency-safe cancellation, seat resale, expiration, and cryptographically secure tickets;
 - transactional outbox events, retrying Kafka publication, idempotent notification consumption, and Flyway-managed PostgreSQL schema evolution;
 - request/correlation IDs, production JSON logs, Redis rate limits, Prometheus business metrics, and PostgreSQL/Redis/Kafka readiness indicators;

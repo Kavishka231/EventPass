@@ -16,3 +16,5 @@ Use `tok_success` for an approved mock payment and `tok_fail` for a declined pay
 `Idempotency-Key` accepts 1–100 characters and is scoped to the authenticated user and booking-create operation. Repeating the same key and payload returns the original booking. Reusing that key with a different event, seat selection, or payment token returns `409 IDEMPOTENCY_PAYLOAD_MISMATCH`. Concurrent same-key requests are serialized by PostgreSQL and create only one booking.
 
 New events must start as `DRAFT`; seat pricing must be configured before `PUBLISHED`. Public event and inventory reads expose published events only. Confirmed bookings may be cancelled more than 24 hours before an event; cancellation refunds the payment, cancels tickets, and releases seats.
+
+`DELETE /api/v1/events/{id}` performs the organizer/admin cancellation transition. Cancelled events cannot be republished, have inventory reconfigured, or accept bookings. A transient `409 EVENT_HAS_PENDING_BOOKINGS` requires cancellation to be retried after in-flight payment attempts finish.

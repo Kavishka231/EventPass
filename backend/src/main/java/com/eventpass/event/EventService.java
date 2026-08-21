@@ -1,10 +1,14 @@
 package com.eventpass.event;
 
+import com.eventpass.booking.Booking;
+import com.eventpass.booking.BookingRepository;
 import com.eventpass.common.error.ApiException;
+import com.eventpass.common.outbox.OutboxService;
 import com.eventpass.seat.EventSeatRepository;
 import com.eventpass.user.User;
 import com.eventpass.venue.VenueRepository;
 import java.time.Instant;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.data.domain.*;
 import org.springframework.data.jpa.domain.Specification;
@@ -17,12 +21,20 @@ public class EventService {
   private final EventRepository events;
   private final VenueRepository venues;
   private final EventSeatRepository inventory;
+  private final BookingRepository bookings;
+  private final OutboxService outbox;
 
   public EventService(
-      EventRepository events, VenueRepository venues, EventSeatRepository inventory) {
+      EventRepository events,
+      VenueRepository venues,
+      EventSeatRepository inventory,
+      BookingRepository bookings,
+      OutboxService outbox) {
     this.events = events;
     this.venues = venues;
     this.inventory = inventory;
+    this.bookings = bookings;
+    this.outbox = outbox;
   }
 
   @Transactional(readOnly = true)
@@ -66,7 +78,7 @@ public class EventService {
 
   @Transactional
   public EventController.EventResponse update(UUID id, EventController.EventRequest r, User actor) {
-    Event e = owned(id, actor);
+    Event e = ownedForUpdate(id, actor);
     validateTransition(e, r.status());
     apply(e, r);
     return response(e);
@@ -74,28 +86,40 @@ public class EventService {
 
   @Transactional
   public void cancel(UUID id, User actor) {
-    Event event = owned(id, actor);
+    Event event = ownedForUpdate(id, actor);
     if (event.getStatus() != Event.Status.DRAFT && event.getStatus() != Event.Status.PUBLISHED) {
       throw new ApiException(
           HttpStatus.CONFLICT,
           "INVALID_EVENT_TRANSITION",
           "Event cannot be cancelled from its current state.");
     }
+    if (bookings.existsByEventIdAndStatus(event.getId(), Booking.Status.PENDING)) {
+      throw new ApiException(
+          HttpStatus.CONFLICT,
+          "EVENT_HAS_PENDING_BOOKINGS",
+          "Event cancellation must wait for pending booking payments to finish.");
+    }
     event.setStatus(Event.Status.CANCELLED);
+    outbox.record(
+        "event.events",
+        "EVENT_CANCELLED",
+        event.getId(),
+        Map.of("eventId", event.getId(), "cancelledBy", actor.getId()));
   }
 
-  private Event owned(UUID id, User u) {
-    Event e =
+  private Event ownedForUpdate(UUID id, User user) {
+    Event event =
         events
-            .findById(id)
+            .lockById(id)
             .orElseThrow(
                 () ->
                     new ApiException(
                         HttpStatus.NOT_FOUND, "EVENT_NOT_FOUND", "Event was not found."));
-    if (u.getRole() != User.Role.ADMIN && !e.getOrganizer().getId().equals(u.getId()))
+    if (user.getRole() != User.Role.ADMIN && !event.getOrganizer().getId().equals(user.getId())) {
       throw new ApiException(
           HttpStatus.FORBIDDEN, "EVENT_FORBIDDEN", "You cannot manage this event.");
-    return e;
+    }
+    return event;
   }
 
   private void apply(Event e, EventController.EventRequest r) {
