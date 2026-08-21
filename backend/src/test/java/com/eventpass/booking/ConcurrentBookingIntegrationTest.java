@@ -27,6 +27,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -66,6 +68,7 @@ class ConcurrentBookingIntegrationTest {
   @Autowired RefundRepository refunds;
   @Autowired TicketRepository tickets;
   @Autowired OutboxEventRepository outboxEvents;
+  @Autowired PlatformTransactionManager transactionManager;
 
   @Test
   void exactlyOneOfTwentyCustomersCanBuyTheSameSeat() throws Exception {
@@ -582,6 +585,64 @@ class ConcurrentBookingIntegrationTest {
         .filteredOn(envelope -> envelope.getEventType().equals("EVENT_TICKETS_CANCELLED"))
         .extracting(OutboxEvent::getAggregateId)
         .contains(fixture.event().getId());
+  }
+
+  @Test
+  void competingOutboxWorkersCannotClaimTheSameRow() throws Exception {
+    outboxEvents.deleteAll();
+    OutboxEvent pending = new OutboxEvent();
+    pending.setId(UUID.randomUUID());
+    pending.setAggregateType("BOOKING");
+    pending.setAggregateId(UUID.randomUUID());
+    pending.setEventType("CLAIM_RACE_TEST");
+    pending.setTopic("booking.events");
+    pending.setPayload("{}");
+    pending.setOccurredAt(Instant.now());
+    outboxEvents.saveAndFlush(pending);
+    CountDownLatch firstClaimed = new CountDownLatch(1);
+    CountDownLatch releaseFirst = new CountDownLatch(1);
+    Queue<UUID> firstWorkerClaims = new ConcurrentLinkedQueue<>();
+    Queue<UUID> secondWorkerClaims = new ConcurrentLinkedQueue<>();
+
+    try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+      Future<?> first =
+          executor.submit(
+              () -> {
+                new TransactionTemplate(transactionManager)
+                    .executeWithoutResult(
+                        status -> {
+                          outboxEvents.claimPendingBatch(10, 1).stream()
+                              .map(OutboxEvent::getId)
+                              .forEach(firstWorkerClaims::add);
+                          firstClaimed.countDown();
+                          try {
+                            releaseFirst.await();
+                          } catch (InterruptedException exception) {
+                            Thread.currentThread().interrupt();
+                            throw new IllegalStateException(exception);
+                          }
+                        });
+                return null;
+              });
+      Future<?> second =
+          executor.submit(
+              () -> {
+                firstClaimed.await();
+                new TransactionTemplate(transactionManager)
+                    .executeWithoutResult(
+                        status ->
+                            outboxEvents.claimPendingBatch(10, 1).stream()
+                                .map(OutboxEvent::getId)
+                                .forEach(secondWorkerClaims::add));
+                releaseFirst.countDown();
+                return null;
+              });
+      first.get();
+      second.get();
+    }
+
+    assertThat(firstWorkerClaims).containsExactly(pending.getId());
+    assertThat(secondWorkerClaims).isEmpty();
   }
 
   private BookingFixture fixture() {

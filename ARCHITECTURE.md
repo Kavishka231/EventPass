@@ -20,7 +20,7 @@ Cancellation uses the same boundary: a `PENDING` refund linked to both payment a
 
 ## Event delivery
 
-Booking transactions write an event envelope and business state to PostgreSQL atomically. The scheduled outbox publisher retries pending rows to `booking.events`, `payment.events`, and `ticket.events`, recording bounded failures and publish timestamps. Delivery is at least once. The notification consumer claims each event ID in `processed_events`, so duplicate Kafka delivery does not repeat consumer work.
+Business transactions write event envelopes and domain state to PostgreSQL atomically. Each scheduled publisher transaction claims an ordered batch with PostgreSQL `FOR UPDATE SKIP LOCKED`, so concurrent application instances process disjoint rows while locks are held. The publisher retries failures and records publish timestamps. Delivery remains at least once. The notification consumer claims each event ID in `processed_events`, so duplicate Kafka delivery does not repeat consumer work.
 
 ## Operational boundaries
 

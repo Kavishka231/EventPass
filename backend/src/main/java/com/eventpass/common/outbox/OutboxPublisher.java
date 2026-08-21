@@ -25,8 +25,7 @@ public class OutboxPublisher {
   @Scheduled(fixedDelayString = "${eventpass.outbox.publish-delay:PT2S}")
   @Transactional
   public void publish() {
-    for (OutboxEvent event :
-        events.findTop100ByPublishedAtIsNullAndAttemptsLessThanOrderByOccurredAt(10)) {
+    for (OutboxEvent event : events.claimPendingBatch(10, 100)) {
       try {
         kafka
             .send(event.getTopic(), event.getAggregateId().toString(), event.getPayload())

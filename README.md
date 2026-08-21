@@ -9,7 +9,7 @@ The backend now includes:
 - secure customer registration, short-lived JWT access tokens, rotating hashed refresh tokens, logout, account-state enforcement, and environment-only administrator bootstrap;
 - administrator user/role/statistics APIs, venue management, physical seat creation with capacity checks, organizer-owned events, guarded publication/cancellation with immediate ticket invalidation, automatic booking refunds and inventory release, and per-event pricing/blocking;
 - Redis TTL locks plus PostgreSQL row and advisory locks, optimistic versions, server-side pricing, user-scoped request-bound booking idempotency, provider-enforced same-key charge/refund replay, durable payment and refund lifecycles with guarded transitions, concurrency-safe cancellation, seat resale, expiration, and cryptographically secure tickets;
-- transactional outbox events, retrying Kafka publication, idempotent notification consumption, and Flyway-managed PostgreSQL schema evolution;
+- transactional outbox events with PostgreSQL `SKIP LOCKED` multi-instance claiming, retrying Kafka publication, idempotent notification consumption, and Flyway-managed schema evolution;
 - request/correlation IDs, production JSON logs, Redis rate limits, Prometheus business metrics, and PostgreSQL/Redis/Kafka readiness indicators;
 - Java 21 formatting/build CI and PostgreSQL/Redis Testcontainers coverage for seat contention, financial races, and the full active-event cancellation chain through booking reconciliation, refunds, ticket invalidation, and inventory release.
 
