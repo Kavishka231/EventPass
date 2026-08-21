@@ -20,6 +20,8 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
 
   boolean existsByEventIdAndStatus(UUID eventId, Booking.Status status);
 
+  List<Booking> findAllByEventIdAndStatus(UUID eventId, Booking.Status status);
+
   List<Booking> findTop100ByStatusAndExpiresAtBefore(Booking.Status status, Instant expiresAt);
 
   @Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)

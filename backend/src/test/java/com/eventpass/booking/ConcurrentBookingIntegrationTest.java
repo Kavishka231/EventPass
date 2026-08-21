@@ -485,6 +485,60 @@ class ConcurrentBookingIntegrationTest {
         .contains(event.getId());
   }
 
+  @Test
+  void eventCancellationRefundsConfirmedBookingsAndReleasesInventory() {
+    long refundsBefore = refunds.count();
+    BookingFixture fixture = fixture();
+    fixture.event().getVenue().setCapacity(2);
+    venues.save(fixture.event().getVenue());
+    Seat secondSeat = new Seat();
+    secondSeat.setVenue(fixture.event().getVenue());
+    secondSeat.setSection("A");
+    secondSeat.setRowNumber("1");
+    secondSeat.setSeatNumber("2");
+    secondSeat.setSeatType(Seat.Type.REGULAR);
+    seats.save(secondSeat);
+    EventSeat secondEventSeat = new EventSeat();
+    secondEventSeat.setEvent(fixture.event());
+    secondEventSeat.setSeat(secondSeat);
+    secondEventSeat.setPrice(new BigDecimal("150.00"));
+    inventory.save(secondEventSeat);
+    User secondCustomer =
+        user("event-refund-" + UUID.randomUUID() + "@example.com", User.Role.CUSTOMER);
+    BookingController.BookingResponse first =
+        service.create(
+            fixture.request(), "event-cancel-first-" + UUID.randomUUID(), fixture.customer());
+    BookingController.BookingResponse second =
+        service.create(
+            new BookingController.CreateBookingRequest(
+                fixture.event().getId(), List.of(secondEventSeat.getId()), "tok_success"),
+            "event-cancel-second-" + UUID.randomUUID(),
+            secondCustomer);
+
+    eventService.cancel(fixture.event().getId(), fixture.event().getOrganizer());
+
+    assertThat(bookings.findAllById(List.of(first.id(), second.id())))
+        .extracting(Booking::getStatus)
+        .containsOnly(Booking.Status.CANCELLED);
+    List<Payment> eventPayments =
+        List.of(
+            payments.findByBookingId(first.id()).orElseThrow(),
+            payments.findByBookingId(second.id()).orElseThrow());
+    assertThat(eventPayments).extracting(Payment::getStatus).containsOnly(Payment.Status.REFUNDED);
+    assertThat(refunds.count()).isEqualTo(refundsBefore + 2);
+    assertThat(eventPayments)
+        .map(payment -> refunds.findByPaymentId(payment.getId()).orElseThrow())
+        .extracting(Refund::getStatus)
+        .containsOnly(Refund.Status.SUCCESS);
+    assertThat(inventory.findAllById(List.of(fixture.eventSeat().getId(), secondEventSeat.getId())))
+        .extracting(EventSeat::getStatus)
+        .containsOnly(EventSeat.Status.AVAILABLE);
+    assertThat(tickets.findAllByBookingId(first.id()))
+        .allMatch(ticket -> ticket.getStatus() == com.eventpass.ticket.Ticket.Status.CANCELLED);
+    assertThat(tickets.findAllByBookingId(second.id()))
+        .allMatch(ticket -> ticket.getStatus() == com.eventpass.ticket.Ticket.Status.CANCELLED);
+  }
+
   private BookingFixture fixture() {
     String suffix = UUID.randomUUID().toString();
     User organizer = user("organizer-" + suffix + "@example.com", User.Role.ORGANIZER);

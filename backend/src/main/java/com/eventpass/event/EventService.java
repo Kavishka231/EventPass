@@ -1,15 +1,14 @@
 package com.eventpass.event;
 
-import com.eventpass.booking.Booking;
-import com.eventpass.booking.BookingRepository;
+import com.eventpass.booking.BookingService;
 import com.eventpass.common.error.ApiException;
-import com.eventpass.common.outbox.OutboxService;
 import com.eventpass.seat.EventSeatRepository;
 import com.eventpass.user.User;
 import com.eventpass.venue.VenueRepository;
 import java.time.Instant;
-import java.util.Map;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.*;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.HttpStatus;
@@ -18,23 +17,24 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class EventService {
+  private static final Logger log = LoggerFactory.getLogger(EventService.class);
   private final EventRepository events;
   private final VenueRepository venues;
   private final EventSeatRepository inventory;
-  private final BookingRepository bookings;
-  private final OutboxService outbox;
+  private final EventCancellationTransactions cancellationTransactions;
+  private final BookingService bookingService;
 
   public EventService(
       EventRepository events,
       VenueRepository venues,
       EventSeatRepository inventory,
-      BookingRepository bookings,
-      OutboxService outbox) {
+      EventCancellationTransactions cancellationTransactions,
+      BookingService bookingService) {
     this.events = events;
     this.venues = venues;
     this.inventory = inventory;
-    this.bookings = bookings;
-    this.outbox = outbox;
+    this.cancellationTransactions = cancellationTransactions;
+    this.bookingService = bookingService;
   }
 
   @Transactional(readOnly = true)
@@ -84,27 +84,20 @@ public class EventService {
     return response(e);
   }
 
-  @Transactional
   public void cancel(UUID id, User actor) {
-    Event event = ownedForUpdate(id, actor);
-    if (event.getStatus() != Event.Status.DRAFT && event.getStatus() != Event.Status.PUBLISHED) {
-      throw new ApiException(
-          HttpStatus.CONFLICT,
-          "INVALID_EVENT_TRANSITION",
-          "Event cannot be cancelled from its current state.");
-    }
-    if (bookings.existsByEventIdAndStatus(event.getId(), Booking.Status.PENDING)) {
-      throw new ApiException(
-          HttpStatus.CONFLICT,
-          "EVENT_HAS_PENDING_BOOKINGS",
-          "Event cancellation must wait for pending booking payments to finish.");
-    }
-    event.setStatus(Event.Status.CANCELLED);
-    outbox.record(
-        "event.events",
-        "EVENT_CANCELLED",
-        event.getId(),
-        Map.of("eventId", event.getId(), "cancelledBy", actor.getId()));
+    cancellationTransactions
+        .cancel(id, actor)
+        .forEach(
+            bookingId -> {
+              try {
+                bookingService.cancelForEvent(bookingId);
+              } catch (RuntimeException exception) {
+                log.warn(
+                    "Event cancellation refund requires follow-up for bookingId={}",
+                    bookingId,
+                    exception);
+              }
+            });
   }
 
   private Event ownedForUpdate(UUID id, User user) {

@@ -5,7 +5,7 @@ This workspace contains the Java 21 Spring Boot API, Flyway migrations, unit and
 ## Implemented capabilities
 
 - Authentication: BCrypt passwords, JWT access tokens, rotating hashed refresh tokens, logout, active-account enforcement, customer registration, and optional first-admin bootstrap.
-- Management: admin users/roles/statistics and venue/seat definitions; organizer-owned draft events, event-specific priced inventory, and a locked cancellation transition that blocks new bookings, inventory mutation, and republication while recording an outbox event.
+- Management: admin users/roles/statistics and venue/seat definitions; organizer-owned draft events, event-specific priced inventory, and a locked cancellation workflow that blocks new sales, records an outbox event, durably refunds confirmed bookings, cancels tickets, and releases inventory.
 - Booking: Redis holds, deterministic PostgreSQL row locking, server-calculated totals, user/operation-scoped idempotency keys with request fingerprints and same-key serialization, and secure digital tickets.
 - Payments: pending charge and refund attempts are committed before provider calls; success, decline, provider references, timestamps, failure details, and ambiguous outcomes requiring reconciliation are durable. Refund transitions are guarded, and a pessimistic booking lock serializes concurrent cancellation requests before refund creation. The provider abstraction serializes and replays same-key financial operations, rejects changed details, and forwards each key through provider adapters. Expiry and cancellation/resale remain supported.
 - Messaging: transactional booking/payment/ticket outbox, retrying Kafka publisher, and an idempotent notification consumer backed by `processed_events`.

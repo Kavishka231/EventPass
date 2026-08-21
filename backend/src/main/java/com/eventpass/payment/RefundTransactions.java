@@ -45,6 +45,23 @@ public class RefundTransactions {
   @Transactional
   public PreparedRefund prepare(UUID bookingId, User user) {
     Booking booking = ownedAndLocked(bookingId, user);
+    return prepare(booking, false);
+  }
+
+  @Transactional
+  public PreparedRefund prepareForEventCancellation(UUID bookingId) {
+    Booking booking = bookings.lockById(bookingId).orElseThrow();
+    if (booking.getEvent().getStatus() != com.eventpass.event.Event.Status.CANCELLED) {
+      throw new ApiException(
+          HttpStatus.CONFLICT,
+          "EVENT_NOT_CANCELLED",
+          "Event-driven refunds require a cancelled event.");
+    }
+    return prepare(booking, true);
+  }
+
+  private PreparedRefund prepare(Booking booking, boolean eventCancellation) {
+    UUID bookingId = booking.getId();
     Payment payment =
         payments
             .lockByBookingId(bookingId)
@@ -56,11 +73,10 @@ public class RefundTransactions {
                         "No payment is available to refund."));
     Optional<Refund> existing = refunds.findByPaymentId(payment.getId());
     if (existing.isPresent()) return replay(existing.get(), payment);
+    boolean outsideCustomerWindow =
+        !booking.getEvent().getStartDateTime().isAfter(Instant.now().plus(Duration.ofHours(24)));
     if (booking.getStatus() != Booking.Status.CONFIRMED
-        || !booking
-            .getEvent()
-            .getStartDateTime()
-            .isAfter(Instant.now().plus(Duration.ofHours(24)))) {
+        || (!eventCancellation && outsideCustomerWindow)) {
       throw new ApiException(
           HttpStatus.CONFLICT,
           "BOOKING_NOT_CANCELLABLE",

@@ -104,7 +104,14 @@ public class BookingService {
   }
 
   public void cancel(UUID id, User user) {
-    RefundTransactions.PreparedRefund refund = refundTransactions.prepare(id, user);
+    refund(refundTransactions.prepare(id, user));
+  }
+
+  public void cancelForEvent(UUID bookingId) {
+    refund(refundTransactions.prepareForEventCancellation(bookingId));
+  }
+
+  private void refund(RefundTransactions.PreparedRefund refund) {
     if (!refund.requiresProviderCall()) return;
     refundTransactions.markAttempted(refund.refundId());
     PaymentProvider.RefundResult result;
