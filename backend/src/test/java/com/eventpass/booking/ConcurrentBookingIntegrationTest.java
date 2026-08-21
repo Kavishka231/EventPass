@@ -486,7 +486,7 @@ class ConcurrentBookingIntegrationTest {
   }
 
   @Test
-  void eventCancellationRefundsConfirmedBookingsAndReleasesInventory() {
+  void eventCancellationOrchestratesRefundsTicketInvalidationAndInventoryRelease() {
     long refundsBefore = refunds.count();
     BookingFixture fixture = fixture();
     fixture.event().getVenue().setCapacity(2);
@@ -515,8 +515,19 @@ class ConcurrentBookingIntegrationTest {
             "event-cancel-second-" + UUID.randomUUID(),
             secondCustomer);
 
+    assertThat(events.findById(fixture.event().getId()).orElseThrow().getStatus())
+        .isEqualTo(Event.Status.PUBLISHED);
+    assertThat(bookings.findAllById(List.of(first.id(), second.id())))
+        .extracting(Booking::getStatus)
+        .containsOnly(Booking.Status.CONFIRMED);
+    assertThat(inventory.findAllById(List.of(fixture.eventSeat().getId(), secondEventSeat.getId())))
+        .extracting(EventSeat::getStatus)
+        .containsOnly(EventSeat.Status.SOLD);
+
     eventService.cancel(fixture.event().getId(), fixture.event().getOrganizer());
 
+    assertThat(events.findById(fixture.event().getId()).orElseThrow().getStatus())
+        .isEqualTo(Event.Status.CANCELLED);
     assertThat(bookings.findAllById(List.of(first.id(), second.id())))
         .extracting(Booking::getStatus)
         .containsOnly(Booking.Status.CANCELLED);
@@ -537,6 +548,10 @@ class ConcurrentBookingIntegrationTest {
         .allMatch(ticket -> ticket.getStatus() == com.eventpass.ticket.Ticket.Status.CANCELLED);
     assertThat(tickets.findAllByBookingId(second.id()))
         .allMatch(ticket -> ticket.getStatus() == com.eventpass.ticket.Ticket.Status.CANCELLED);
+    assertThat(outboxEvents.findAll())
+        .filteredOn(envelope -> envelope.getAggregateId().equals(fixture.event().getId()))
+        .extracting(OutboxEvent::getEventType)
+        .contains("EVENT_CANCELLED", "EVENT_TICKETS_CANCELLED");
   }
 
   @Test

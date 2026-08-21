@@ -10,7 +10,7 @@ This workspace contains the Java 21 Spring Boot API, Flyway migrations, unit and
 - Payments: pending charge and refund attempts are committed before provider calls; success, decline, provider references, timestamps, failure details, and ambiguous outcomes requiring reconciliation are durable. Refund transitions are guarded, and a pessimistic booking lock serializes concurrent cancellation requests before refund creation. The provider abstraction serializes and replays same-key financial operations, rejects changed details, and forwards each key through provider adapters. Expiry and cancellation/resale remain supported.
 - Messaging: transactional booking/payment/ticket outbox, retrying Kafka publisher, and an idempotent notification consumer backed by `processed_events`.
 - Operations: Flyway validation, OpenAPI, Actuator probes, Prometheus business metrics, structured production logs, request tracing, rate limits, Docker, and CI.
-- Verification: Spotless and Maven verification pass; Testcontainers covers 20-buyer seat contention, booking idempotency races, failed payment durability, provider replay, concurrent cancellation, and duplicate refund replay.
+- Verification: Spotless and Maven verification pass; Testcontainers covers seat/financial races and the complete active-event cancellation orchestration through refunded payments, invalid tickets, released inventory, and outbox events.
 - Delivery: the backend image uses a dependency-cache-mounted Java 21 build stage, excludes local artifacts, and runs as a non-root JRE user; CI verifies tests before building the image.
 
 From this directory:
