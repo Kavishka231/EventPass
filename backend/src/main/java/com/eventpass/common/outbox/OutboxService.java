@@ -27,6 +27,7 @@ public class OutboxService {
     event.setEventType(eventType);
     event.setTopic(topic);
     event.setOccurredAt(occurredAt);
+    event.setNextAttemptAt(occurredAt);
     try {
       event.setPayload(
           objectMapper.writeValueAsString(

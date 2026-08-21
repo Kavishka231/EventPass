@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.eventpass.common.error.ApiException;
 import com.eventpass.common.outbox.OutboxEvent;
 import com.eventpass.common.outbox.OutboxEventRepository;
+import com.eventpass.common.outbox.OutboxRecoveryService;
 import com.eventpass.event.*;
 import com.eventpass.payment.Payment;
 import com.eventpass.payment.PaymentProvider;
@@ -69,6 +70,7 @@ class ConcurrentBookingIntegrationTest {
   @Autowired TicketRepository tickets;
   @Autowired OutboxEventRepository outboxEvents;
   @Autowired PlatformTransactionManager transactionManager;
+  @Autowired OutboxRecoveryService outboxRecovery;
 
   @Test
   void exactlyOneOfTwentyCustomersCanBuyTheSameSeat() throws Exception {
@@ -598,6 +600,7 @@ class ConcurrentBookingIntegrationTest {
     pending.setTopic("booking.events");
     pending.setPayload("{}");
     pending.setOccurredAt(Instant.now());
+    pending.setNextAttemptAt(Instant.now());
     outboxEvents.saveAndFlush(pending);
     CountDownLatch firstClaimed = new CountDownLatch(1);
     CountDownLatch releaseFirst = new CountDownLatch(1);
@@ -645,6 +648,33 @@ class ConcurrentBookingIntegrationTest {
     assertThat(secondWorkerClaims).isEmpty();
   }
 
+  @Test
+  void failedOutboxRowCanBeRecoveredForImmediateDelivery() {
+    outboxEvents.deleteAll();
+    OutboxEvent failed = new OutboxEvent();
+    failed.setId(UUID.randomUUID());
+    failed.setAggregateType("BOOKING");
+    failed.setAggregateId(UUID.randomUUID());
+    failed.setEventType("RECOVERY_TEST");
+    failed.setTopic("booking.events");
+    failed.setPayload("{}");
+    failed.setOccurredAt(Instant.now());
+    failed.setNextAttemptAt(Instant.now());
+    failed.setAttempts(10);
+    failed.setStatus(OutboxEvent.Status.FAILED);
+    failed.setLastError("Kafka unavailable");
+    outboxEvents.saveAndFlush(failed);
+
+    assertThat(claimPendingOutboxIds()).isEmpty();
+    outboxRecovery.retry(failed.getId());
+
+    OutboxEvent recovered = outboxEvents.findById(failed.getId()).orElseThrow();
+    assertThat(recovered.getStatus()).isEqualTo(OutboxEvent.Status.PENDING);
+    assertThat(recovered.getAttempts()).isZero();
+    assertThat(recovered.getLastError()).isNull();
+    assertThat(claimPendingOutboxIds()).containsExactly(failed.getId());
+  }
+
   private BookingFixture fixture() {
     String suffix = UUID.randomUUID().toString();
     User organizer = user("organizer-" + suffix + "@example.com", User.Role.ORGANIZER);
@@ -678,6 +708,13 @@ class ConcurrentBookingIntegrationTest {
     eventSeat.setPrice(new BigDecimal("100.00"));
     inventory.save(eventSeat);
     return new BookingFixture(event, eventSeat, customer);
+  }
+
+  private List<UUID> claimPendingOutboxIds() {
+    return new TransactionTemplate(transactionManager)
+        .execute(
+            status ->
+                outboxEvents.claimPendingBatch(10, 100).stream().map(OutboxEvent::getId).toList());
   }
 
   private BookingFixture cancellableFixture() {
