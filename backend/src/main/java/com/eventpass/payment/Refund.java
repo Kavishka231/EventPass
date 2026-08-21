@@ -55,6 +55,43 @@ public class Refund extends BaseEntity {
   private Payment.ReconciliationStatus reconciliationStatus =
       Payment.ReconciliationStatus.NOT_REQUIRED;
 
+  public void markProcessing(Instant now) {
+    requireStatus(Status.PENDING);
+    status = Status.PROCESSING;
+    attemptedAt = now;
+  }
+
+  public void markSuccessful(String reference, Instant now) {
+    requireStatus(Status.PROCESSING);
+    status = Status.SUCCESS;
+    providerReference = reference;
+    completedAt = now;
+    reconciliationStatus = Payment.ReconciliationStatus.NOT_REQUIRED;
+  }
+
+  public void markFailed(String reference, String code, Instant now) {
+    requireStatus(Status.PROCESSING);
+    status = Status.FAILED;
+    providerReference = reference;
+    failureCode = code;
+    completedAt = now;
+    reconciliationStatus = Payment.ReconciliationStatus.NOT_REQUIRED;
+  }
+
+  public void markUnknown(String error) {
+    requireStatus(Status.PROCESSING);
+    status = Status.UNKNOWN;
+    lastError = error;
+    reconciliationStatus = Payment.ReconciliationStatus.PENDING;
+  }
+
+  private void requireStatus(Status expected) {
+    if (status != expected) {
+      throw new IllegalStateException(
+          "Refund transition requires " + expected + " but was " + status + ".");
+    }
+  }
+
   public enum Status {
     PENDING,
     PROCESSING,

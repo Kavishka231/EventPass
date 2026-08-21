@@ -92,8 +92,7 @@ public class RefundTransactions {
   public void markAttempted(UUID refundId) {
     Refund refund = lockRefund(refundId);
     if (refund.getStatus() != Refund.Status.PENDING) return;
-    refund.setStatus(Refund.Status.PROCESSING);
-    refund.setAttemptedAt(Instant.now());
+    refund.markProcessing(Instant.now());
   }
 
   @Transactional
@@ -102,11 +101,8 @@ public class RefundTransactions {
     if (refund.getStatus() != Refund.Status.PROCESSING) {
       return refund.getStatus() == Refund.Status.SUCCESS;
     }
-    refund.setProviderReference(result.reference());
-    refund.setCompletedAt(Instant.now());
     if (!result.successful()) {
-      refund.setStatus(Refund.Status.FAILED);
-      refund.setFailureCode(result.failureCode());
+      refund.markFailed(result.reference(), result.failureCode(), Instant.now());
       return false;
     }
     Booking booking = bookings.lockById(refund.getBooking().getId()).orElseThrow();
@@ -114,7 +110,7 @@ public class RefundTransactions {
     List<UUID> seatIds =
         booking.getItems().stream().map(item -> item.getEventSeat().getId()).sorted().toList();
     List<EventSeat> inventory = seats.lockForBooking(booking.getEvent().getId(), seatIds);
-    refund.setStatus(Refund.Status.SUCCESS);
+    refund.markSuccessful(result.reference(), Instant.now());
     payment.setStatus(Payment.Status.REFUNDED);
     booking.setStatus(Booking.Status.CANCELLED);
     inventory.forEach(seat -> seat.setStatus(EventSeat.Status.AVAILABLE));
@@ -136,11 +132,9 @@ public class RefundTransactions {
   public void markOutcomeUnknown(UUID refundId, RuntimeException providerError) {
     Refund refund = lockRefund(refundId);
     if (refund.getStatus() != Refund.Status.PROCESSING) return;
-    refund.setStatus(Refund.Status.UNKNOWN);
-    refund.setReconciliationStatus(Payment.ReconciliationStatus.PENDING);
     String message = providerError.getMessage();
     if (message == null || message.isBlank()) message = "Refund provider outcome was unknown.";
-    refund.setLastError(message.substring(0, Math.min(message.length(), 500)));
+    refund.markUnknown(message.substring(0, Math.min(message.length(), 500)));
   }
 
   private PreparedRefund replay(Refund refund, Payment payment) {

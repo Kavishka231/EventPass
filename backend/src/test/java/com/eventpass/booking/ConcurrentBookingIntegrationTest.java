@@ -327,6 +327,54 @@ class ConcurrentBookingIntegrationTest {
         .allMatch(ticket -> ticket.getStatus() == com.eventpass.ticket.Ticket.Status.CANCELLED);
   }
 
+  @Test
+  void simultaneousCancellationsCreateExactlyOneRefund() throws Exception {
+    long refundsBefore = refunds.count();
+    BookingFixture fixture = fixture();
+    fixture.event().setStartDateTime(Instant.now().plusSeconds(172800));
+    fixture.event().setEndDateTime(Instant.now().plusSeconds(176400));
+    events.save(fixture.event());
+    BookingController.BookingResponse created =
+        service.create(
+            fixture.request(), "concurrent-refund-" + UUID.randomUUID(), fixture.customer());
+    CountDownLatch ready = new CountDownLatch(2);
+    CountDownLatch start = new CountDownLatch(1);
+    Queue<Throwable> failures = new ConcurrentLinkedQueue<>();
+
+    try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+      List<Future<?>> calls = new ArrayList<>();
+      for (int request = 0; request < 2; request++) {
+        calls.add(
+            executor.submit(
+                () -> {
+                  ready.countDown();
+                  start.await();
+                  try {
+                    service.cancel(created.id(), fixture.customer());
+                  } catch (Throwable throwable) {
+                    failures.add(throwable);
+                  }
+                  return null;
+                }));
+      }
+      ready.await();
+      start.countDown();
+      for (Future<?> call : calls) call.get();
+    }
+
+    Payment payment = payments.findByBookingId(created.id()).orElseThrow();
+    assertThat(refunds.count()).isEqualTo(refundsBefore + 1);
+    assertThat(refunds.findByPaymentId(payment.getId()))
+        .get()
+        .extracting(Refund::getStatus)
+        .isEqualTo(Refund.Status.SUCCESS);
+    assertThat(failures)
+        .allMatch(
+            throwable ->
+                throwable instanceof ApiException exception
+                    && exception.code().equals("REFUND_PENDING"));
+  }
+
   private BookingFixture fixture() {
     String suffix = UUID.randomUUID().toString();
     User organizer = user("organizer-" + suffix + "@example.com", User.Role.ORGANIZER);
