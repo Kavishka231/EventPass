@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.eventpass.common.error.ApiException;
 import com.eventpass.event.*;
 import com.eventpass.payment.Payment;
+import com.eventpass.payment.PaymentProvider;
 import com.eventpass.payment.PaymentRepository;
 import com.eventpass.payment.Refund;
 import com.eventpass.payment.RefundRepository;
@@ -57,6 +58,7 @@ class ConcurrentBookingIntegrationTest {
   @Autowired EventSeatRepository inventory;
   @Autowired BookingRepository bookings;
   @Autowired PaymentRepository payments;
+  @Autowired PaymentProvider paymentProvider;
   @Autowired RefundRepository refunds;
   @Autowired TicketRepository tickets;
 
@@ -294,10 +296,7 @@ class ConcurrentBookingIntegrationTest {
   @Test
   void cancellationPersistsCompletedRefundBeforeReleasingTheSeat() {
     long refundsBefore = refunds.count();
-    BookingFixture fixture = fixture();
-    fixture.event().setStartDateTime(Instant.now().plusSeconds(172800));
-    fixture.event().setEndDateTime(Instant.now().plusSeconds(176400));
-    events.save(fixture.event());
+    BookingFixture fixture = cancellableFixture();
     BookingController.BookingResponse created =
         service.create(
             fixture.request(), "refundable-booking-" + UUID.randomUUID(), fixture.customer());
@@ -330,10 +329,7 @@ class ConcurrentBookingIntegrationTest {
   @Test
   void simultaneousCancellationsCreateExactlyOneRefund() throws Exception {
     long refundsBefore = refunds.count();
-    BookingFixture fixture = fixture();
-    fixture.event().setStartDateTime(Instant.now().plusSeconds(172800));
-    fixture.event().setEndDateTime(Instant.now().plusSeconds(176400));
-    events.save(fixture.event());
+    BookingFixture fixture = cancellableFixture();
     BookingController.BookingResponse created =
         service.create(
             fixture.request(), "concurrent-refund-" + UUID.randomUUID(), fixture.customer());
@@ -375,6 +371,58 @@ class ConcurrentBookingIntegrationTest {
                     && exception.code().equals("REFUND_PENDING"));
   }
 
+  @Test
+  void repeatedCancellationReplaysOneDurableRefund() {
+    long refundsBefore = refunds.count();
+    BookingFixture fixture = cancellableFixture();
+    BookingController.BookingResponse created =
+        service.create(
+            fixture.request(), "duplicate-refund-" + UUID.randomUUID(), fixture.customer());
+
+    service.cancel(created.id(), fixture.customer());
+    service.cancel(created.id(), fixture.customer());
+
+    Payment payment = payments.findByBookingId(created.id()).orElseThrow();
+    assertThat(refunds.count()).isEqualTo(refundsBefore + 1);
+    assertThat(refunds.findByPaymentId(payment.getId()))
+        .get()
+        .satisfies(
+            refund -> {
+              assertThat(refund.getStatus()).isEqualTo(Refund.Status.SUCCESS);
+              assertThat(refund.getProviderReference()).startsWith("mock_refund_");
+            });
+  }
+
+  @Test
+  void concurrentProviderCallsWithOneKeyReplayOneFinancialResult() throws Exception {
+    String key = "provider-race-" + UUID.randomUUID();
+    CountDownLatch ready = new CountDownLatch(3);
+    CountDownLatch start = new CountDownLatch(1);
+    Queue<PaymentProvider.PaymentResult> results = new ConcurrentLinkedQueue<>();
+
+    try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+      List<Future<?>> calls = new ArrayList<>();
+      for (int request = 0; request < 3; request++) {
+        calls.add(
+            executor.submit(
+                () -> {
+                  ready.countDown();
+                  start.await();
+                  results.add(paymentProvider.charge("tok_success", BigDecimal.TEN, "LKR", key));
+                  return null;
+                }));
+      }
+      ready.await();
+      start.countDown();
+      for (Future<?> call : calls) call.get();
+    }
+
+    assertThat(results)
+        .hasSize(3)
+        .extracting(PaymentProvider.PaymentResult::reference)
+        .containsOnly(results.peek().reference());
+  }
+
   private BookingFixture fixture() {
     String suffix = UUID.randomUUID().toString();
     User organizer = user("organizer-" + suffix + "@example.com", User.Role.ORGANIZER);
@@ -408,6 +456,14 @@ class ConcurrentBookingIntegrationTest {
     eventSeat.setPrice(new BigDecimal("100.00"));
     inventory.save(eventSeat);
     return new BookingFixture(event, eventSeat, customer);
+  }
+
+  private BookingFixture cancellableFixture() {
+    BookingFixture fixture = fixture();
+    fixture.event().setStartDateTime(Instant.now().plusSeconds(172800));
+    fixture.event().setEndDateTime(Instant.now().plusSeconds(176400));
+    events.save(fixture.event());
+    return fixture;
   }
 
   private record BookingFixture(Event event, EventSeat eventSeat, User customer) {
