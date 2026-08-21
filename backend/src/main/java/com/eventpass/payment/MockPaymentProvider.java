@@ -32,8 +32,10 @@ public class MockPaymentProvider extends IdempotentPaymentProvider {
         successful, "mock_" + UUID.randomUUID(), successful ? null : "MOCK_PAYMENT_DECLINED");
   }
 
-  public boolean refund(String paymentReference, BigDecimal amount, String currency) {
-    return true;
+  @Override
+  protected RefundResult performRefund(
+      String paymentReference, BigDecimal amount, String currency, String key) {
+    return new RefundResult(true, "mock_refund_" + UUID.randomUUID(), null);
   }
 
   @FunctionalInterface

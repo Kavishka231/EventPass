@@ -21,8 +21,8 @@ public class BookingService {
   private final SeatLockService locks;
   private final PaymentProvider paymentProvider;
   private final BookingPaymentTransactions paymentTransactions;
+  private final RefundTransactions refundTransactions;
   private final PaymentRepository payments;
-  private final TicketRepository tickets;
   private final OutboxService outbox;
   private final Counter bookingAttempts;
   private final Counter successfulBookings;
@@ -34,16 +34,16 @@ public class BookingService {
       SeatLockService locks,
       PaymentProvider paymentProvider,
       BookingPaymentTransactions paymentTransactions,
+      RefundTransactions refundTransactions,
       PaymentRepository payments,
-      TicketRepository tickets,
       OutboxService outbox,
       MeterRegistry meterRegistry) {
     this.bookings = bookings;
     this.locks = locks;
     this.paymentProvider = paymentProvider;
     this.paymentTransactions = paymentTransactions;
+    this.refundTransactions = refundTransactions;
     this.payments = payments;
-    this.tickets = tickets;
     this.outbox = outbox;
     this.bookingAttempts = meterRegistry.counter("eventpass.booking.attempts");
     this.successfulBookings = meterRegistry.counter("eventpass.booking.successes");
@@ -103,45 +103,31 @@ public class BookingService {
     return response(owned(id, user));
   }
 
-  @Transactional
   public void cancel(UUID id, User user) {
-    Booking booking = owned(id, user);
-    if (booking.getStatus() != Booking.Status.CONFIRMED
-        || !booking
-            .getEvent()
-            .getStartDateTime()
-            .isAfter(Instant.now().plus(Duration.ofHours(24)))) {
+    RefundTransactions.PreparedRefund refund = refundTransactions.prepare(id, user);
+    if (!refund.requiresProviderCall()) return;
+    refundTransactions.markAttempted(refund.refundId());
+    PaymentProvider.RefundResult result;
+    try {
+      result =
+          paymentProvider.refund(
+              refund.paymentReference(),
+              refund.amount(),
+              refund.currency(),
+              refund.idempotencyKey());
+    } catch (RuntimeException exception) {
+      refundTransactions.markOutcomeUnknown(refund.refundId(), exception);
       throw new ApiException(
-          HttpStatus.CONFLICT,
-          "BOOKING_NOT_CANCELLABLE",
-          "Booking is no longer eligible for cancellation.");
+          HttpStatus.SERVICE_UNAVAILABLE,
+          "REFUND_OUTCOME_UNKNOWN",
+          "The refund outcome is being reconciled; do not submit another cancellation.");
     }
-    Payment payment =
-        payments
-            .findByBookingId(id)
-            .filter(value -> value.getStatus() == Payment.Status.SUCCESS)
-            .orElseThrow(
-                () ->
-                    new ApiException(
-                        HttpStatus.CONFLICT,
-                        "PAYMENT_NOT_REFUNDABLE",
-                        "No successful payment is available to refund."));
-    if (!paymentProvider.refund(
-        payment.getPaymentReference(), payment.getAmount(), payment.getCurrency())) {
+    if (!refundTransactions.complete(refund.refundId(), result)) {
       throw new ApiException(
           HttpStatus.SERVICE_UNAVAILABLE,
           "REFUND_FAILED",
           "The payment provider could not complete the refund.");
     }
-    payment.setStatus(Payment.Status.REFUNDED);
-    booking.setStatus(Booking.Status.CANCELLED);
-    booking.getItems().forEach(item -> item.getEventSeat().setStatus(EventSeat.Status.AVAILABLE));
-    tickets.findAllByBookingId(id).forEach(ticket -> ticket.setStatus(Ticket.Status.CANCELLED));
-    outbox.record(
-        BOOKING_TOPIC,
-        "BOOKING_CANCELLED",
-        booking.getId(),
-        Map.of("bookingId", booking.getId(), "paymentReference", payment.getPaymentReference()));
   }
 
   @Transactional

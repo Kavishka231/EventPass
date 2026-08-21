@@ -14,6 +14,8 @@ Booking uses defense in depth:
 6. Separate locked transactions record an attempt and finalize success or decline. Provider adapters receive the booking idempotency key; the sandbox base implementation atomically replays its first definitive same-key result and rejects changed charge details. Ambiguous provider errors leave inventory held and mark the payment `UNKNOWN` with reconciliation `PENDING`; expiration cannot release those seats.
 7. Unique booking references, ticket tokens, payment references, and scoped idempotency keys provide durable duplication barriers.
 
+Cancellation uses the same boundary: a `PENDING` refund linked to both payment and booking is committed before the provider call. A locked finalization transaction records the provider result and only then marks the payment refunded, cancels tickets and booking, and releases inventory. Unknown outcomes remain reconciliation-pending without releasing seats.
+
 ## Event delivery
 
 Booking transactions write an event envelope and business state to PostgreSQL atomically. The scheduled outbox publisher retries pending rows to `booking.events`, `payment.events`, and `ticket.events`, recording bounded failures and publish timestamps. Delivery is at least once. The notification consumer claims each event ID in `processed_events`, so duplicate Kafka delivery does not repeat consumer work.

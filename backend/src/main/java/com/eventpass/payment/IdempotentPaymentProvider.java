@@ -13,6 +13,7 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public abstract class IdempotentPaymentProvider implements PaymentProvider {
   private final ConcurrentHashMap<String, StoredCharge> charges = new ConcurrentHashMap<>();
+  private final ConcurrentHashMap<String, StoredRefund> refunds = new ConcurrentHashMap<>();
 
   @Override
   public final PaymentResult charge(
@@ -41,6 +42,33 @@ public abstract class IdempotentPaymentProvider implements PaymentProvider {
   protected abstract PaymentResult performCharge(
       String providerToken, BigDecimal amount, String currency, String idempotencyKey);
 
+  @Override
+  public final RefundResult refund(
+      String paymentReference, BigDecimal amount, String currency, String idempotencyKey) {
+    if (idempotencyKey == null || idempotencyKey.isBlank()) {
+      throw new IllegalArgumentException("Refund idempotency key must not be blank.");
+    }
+    String requestHash = requestHash(paymentReference, amount, currency);
+    StoredRefund stored =
+        refunds.compute(
+            idempotencyKey,
+            (key, existing) -> {
+              if (existing == null) {
+                return new StoredRefund(
+                    requestHash, performRefund(paymentReference, amount, currency, key));
+              }
+              if (!existing.requestHash().equals(requestHash)) {
+                throw new PaymentIdempotencyException(
+                    "Refund idempotency key was reused with different refund details.");
+              }
+              return existing;
+            });
+    return stored.result();
+  }
+
+  protected abstract RefundResult performRefund(
+      String paymentReference, BigDecimal amount, String currency, String idempotencyKey);
+
   private String requestHash(String providerToken, BigDecimal amount, String currency) {
     String canonical =
         providerToken.length()
@@ -60,4 +88,6 @@ public abstract class IdempotentPaymentProvider implements PaymentProvider {
   }
 
   private record StoredCharge(String requestHash, PaymentResult result) {}
+
+  private record StoredRefund(String requestHash, RefundResult result) {}
 }

@@ -6,7 +6,10 @@ public interface PaymentProvider {
   PaymentResult charge(
       String providerToken, BigDecimal amount, String currency, String idempotencyKey);
 
-  boolean refund(String paymentReference, BigDecimal amount, String currency);
+  RefundResult refund(
+      String paymentReference, BigDecimal amount, String currency, String idempotencyKey);
 
   record PaymentResult(boolean successful, String reference, String failureCode) {}
+
+  record RefundResult(boolean successful, String reference, String failureCode) {}
 }
