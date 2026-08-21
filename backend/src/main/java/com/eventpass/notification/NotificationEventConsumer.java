@@ -1,5 +1,8 @@
 package com.eventpass.notification;
 
+import com.eventpass.common.outbox.EventEnvelope;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.UUID;
 import org.slf4j.*;
@@ -24,15 +27,17 @@ public class NotificationEventConsumer {
   @KafkaListener(topics = {"booking.events", "payment.events", "ticket.events"})
   public void consume(String payload, @Header(KafkaHeaders.RECEIVED_TOPIC) String topic)
       throws Exception {
-    var event = objectMapper.readTree(payload);
-    UUID eventId = UUID.fromString(event.path("eventId").asText());
+    EventEnvelope<JsonNode> event =
+        objectMapper.readValue(payload, new TypeReference<EventEnvelope<JsonNode>>() {});
+    UUID eventId = event.eventId();
     if (!processedEvents.claim(CONSUMER, eventId)) {
       return;
     }
     log.info(
-        "notification_event_received topic={} eventType={} eventId={}",
+        "notification_event_received topic={} eventType={} version={} eventId={}",
         topic,
-        event.path("eventType").asText(),
+        event.eventType(),
+        event.version(),
         eventId);
   }
 }

@@ -31,12 +31,7 @@ public class OutboxService {
     try {
       event.setPayload(
           objectMapper.writeValueAsString(
-              Map.of(
-                  "eventId", eventId,
-                  "eventType", eventType,
-                  "occurredAt", occurredAt,
-                  "aggregateId", aggregateId,
-                  "data", payload)));
+              EventEnvelope.versionOne(eventId, eventType, occurredAt, aggregateId, payload)));
     } catch (JsonProcessingException exception) {
       throw new IllegalStateException("Could not serialize domain event", exception);
     }
