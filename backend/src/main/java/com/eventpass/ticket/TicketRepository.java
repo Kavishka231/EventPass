@@ -7,4 +7,6 @@ public interface TicketRepository extends JpaRepository<Ticket, UUID> {
   List<Ticket> findAllByBookingUserId(UUID userId);
 
   List<Ticket> findAllByBookingId(UUID bookingId);
+
+  List<Ticket> findAllByBookingEventId(UUID eventId);
 }

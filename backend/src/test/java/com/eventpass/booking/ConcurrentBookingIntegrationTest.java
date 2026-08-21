@@ -539,6 +539,36 @@ class ConcurrentBookingIntegrationTest {
         .allMatch(ticket -> ticket.getStatus() == com.eventpass.ticket.Ticket.Status.CANCELLED);
   }
 
+  @Test
+  void cancelledEventInvalidatesTicketsEvenWhenRefundFails() {
+    BookingFixture fixture = fixture();
+    BookingController.BookingResponse created =
+        service.create(
+            fixture.request(), "event-ticket-failure-" + UUID.randomUUID(), fixture.customer());
+    Payment payment = payments.findByBookingId(created.id()).orElseThrow();
+    payment.setPaymentReference("mock_refund_fail");
+    payments.save(payment);
+
+    eventService.cancel(fixture.event().getId(), fixture.event().getOrganizer());
+
+    Refund refund = refunds.findByPaymentId(payment.getId()).orElseThrow();
+    assertThat(events.findById(fixture.event().getId()).orElseThrow().getStatus())
+        .isEqualTo(Event.Status.CANCELLED);
+    assertThat(refund.getStatus()).isEqualTo(Refund.Status.FAILED);
+    assertThat(refund.getFailureCode()).isEqualTo("MOCK_REFUND_FAILED");
+    assertThat(bookings.findById(created.id()).orElseThrow().getStatus())
+        .isEqualTo(Booking.Status.CONFIRMED);
+    assertThat(tickets.findAllByBookingId(created.id()))
+        .isNotEmpty()
+        .allMatch(ticket -> ticket.getStatus() == com.eventpass.ticket.Ticket.Status.CANCELLED);
+    assertThat(inventory.findById(fixture.eventSeat().getId()).orElseThrow().getStatus())
+        .isEqualTo(EventSeat.Status.SOLD);
+    assertThat(outboxEvents.findAll())
+        .filteredOn(envelope -> envelope.getEventType().equals("EVENT_TICKETS_CANCELLED"))
+        .extracting(OutboxEvent::getAggregateId)
+        .contains(fixture.event().getId());
+  }
+
   private BookingFixture fixture() {
     String suffix = UUID.randomUUID().toString();
     User organizer = user("organizer-" + suffix + "@example.com", User.Role.ORGANIZER);

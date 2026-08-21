@@ -35,6 +35,10 @@ public class MockPaymentProvider extends IdempotentPaymentProvider {
   @Override
   protected RefundResult performRefund(
       String paymentReference, BigDecimal amount, String currency, String key) {
+    if ("mock_refund_fail".equals(paymentReference)) {
+      return new RefundResult(
+          false, "mock_failed_refund_" + UUID.randomUUID(), "MOCK_REFUND_FAILED");
+    }
     return new RefundResult(true, "mock_refund_" + UUID.randomUUID(), null);
   }
 

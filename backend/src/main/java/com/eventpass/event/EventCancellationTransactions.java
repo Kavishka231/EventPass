@@ -4,6 +4,8 @@ import com.eventpass.booking.Booking;
 import com.eventpass.booking.BookingRepository;
 import com.eventpass.common.error.ApiException;
 import com.eventpass.common.outbox.OutboxService;
+import com.eventpass.ticket.Ticket;
+import com.eventpass.ticket.TicketRepository;
 import com.eventpass.user.User;
 import java.util.*;
 import org.springframework.http.HttpStatus;
@@ -14,12 +16,17 @@ import org.springframework.transaction.annotation.Transactional;
 class EventCancellationTransactions {
   private final EventRepository events;
   private final BookingRepository bookings;
+  private final TicketRepository tickets;
   private final OutboxService outbox;
 
   EventCancellationTransactions(
-      EventRepository events, BookingRepository bookings, OutboxService outbox) {
+      EventRepository events,
+      BookingRepository bookings,
+      TicketRepository tickets,
+      OutboxService outbox) {
     this.events = events;
     this.bookings = bookings;
+    this.tickets = tickets;
     this.outbox = outbox;
   }
 
@@ -42,6 +49,8 @@ class EventCancellationTransactions {
         bookings.findAllByEventIdAndStatus(eventId, Booking.Status.CONFIRMED).stream()
             .map(Booking::getId)
             .toList();
+    List<Ticket> affectedTickets = tickets.findAllByBookingEventId(eventId);
+    affectedTickets.forEach(ticket -> ticket.setStatus(Ticket.Status.CANCELLED));
     event.setStatus(Event.Status.CANCELLED);
     outbox.record(
         "event.events",
@@ -51,6 +60,11 @@ class EventCancellationTransactions {
             "eventId", eventId,
             "cancelledBy", actor.getId(),
             "affectedBookings", affectedBookingIds.size()));
+    outbox.record(
+        "ticket.events",
+        "EVENT_TICKETS_CANCELLED",
+        eventId,
+        Map.of("eventId", eventId, "cancelledTickets", affectedTickets.size()));
     return affectedBookingIds;
   }
 
