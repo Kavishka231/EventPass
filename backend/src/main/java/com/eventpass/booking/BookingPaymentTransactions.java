@@ -89,7 +89,7 @@ class BookingPaymentTransactions {
 
     Event event =
         events
-            .findById(request.eventId())
+            .lockById(request.eventId())
             .filter(
                 value ->
                     value.getStatus() == Event.Status.PUBLISHED

@@ -96,7 +96,7 @@ public class InventoryService {
   private Event managedEvent(UUID id, User actor) {
     Event event =
         events
-            .findById(id)
+            .lockById(id)
             .orElseThrow(
                 () ->
                     new ApiException(

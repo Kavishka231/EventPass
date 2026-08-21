@@ -1,11 +1,14 @@
 package com.eventpass.event;
 
+import com.eventpass.booking.BookingService;
 import com.eventpass.common.error.ApiException;
 import com.eventpass.seat.EventSeatRepository;
 import com.eventpass.user.User;
 import com.eventpass.venue.VenueRepository;
 import java.time.Instant;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.*;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.HttpStatus;
@@ -14,15 +17,24 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class EventService {
+  private static final Logger log = LoggerFactory.getLogger(EventService.class);
   private final EventRepository events;
   private final VenueRepository venues;
   private final EventSeatRepository inventory;
+  private final EventCancellationTransactions cancellationTransactions;
+  private final BookingService bookingService;
 
   public EventService(
-      EventRepository events, VenueRepository venues, EventSeatRepository inventory) {
+      EventRepository events,
+      VenueRepository venues,
+      EventSeatRepository inventory,
+      EventCancellationTransactions cancellationTransactions,
+      BookingService bookingService) {
     this.events = events;
     this.venues = venues;
     this.inventory = inventory;
+    this.cancellationTransactions = cancellationTransactions;
+    this.bookingService = bookingService;
   }
 
   @Transactional(readOnly = true)
@@ -66,36 +78,41 @@ public class EventService {
 
   @Transactional
   public EventController.EventResponse update(UUID id, EventController.EventRequest r, User actor) {
-    Event e = owned(id, actor);
+    Event e = ownedForUpdate(id, actor);
     validateTransition(e, r.status());
     apply(e, r);
     return response(e);
   }
 
-  @Transactional
   public void cancel(UUID id, User actor) {
-    Event event = owned(id, actor);
-    if (event.getStatus() != Event.Status.DRAFT && event.getStatus() != Event.Status.PUBLISHED) {
-      throw new ApiException(
-          HttpStatus.CONFLICT,
-          "INVALID_EVENT_TRANSITION",
-          "Event cannot be cancelled from its current state.");
-    }
-    event.setStatus(Event.Status.CANCELLED);
+    cancellationTransactions
+        .cancel(id, actor)
+        .forEach(
+            bookingId -> {
+              try {
+                bookingService.cancelForEvent(bookingId);
+              } catch (RuntimeException exception) {
+                log.warn(
+                    "Event cancellation refund requires follow-up for bookingId={}",
+                    bookingId,
+                    exception);
+              }
+            });
   }
 
-  private Event owned(UUID id, User u) {
-    Event e =
+  private Event ownedForUpdate(UUID id, User user) {
+    Event event =
         events
-            .findById(id)
+            .lockById(id)
             .orElseThrow(
                 () ->
                     new ApiException(
                         HttpStatus.NOT_FOUND, "EVENT_NOT_FOUND", "Event was not found."));
-    if (u.getRole() != User.Role.ADMIN && !e.getOrganizer().getId().equals(u.getId()))
+    if (user.getRole() != User.Role.ADMIN && !event.getOrganizer().getId().equals(user.getId())) {
       throw new ApiException(
           HttpStatus.FORBIDDEN, "EVENT_FORBIDDEN", "You cannot manage this event.");
-    return e;
+    }
+    return event;
   }
 
   private void apply(Event e, EventController.EventRequest r) {
