@@ -8,11 +8,13 @@ Every error uses `{timestamp, status, code, message, path, requestId}`. Validati
 - `GET /api/v1/events` supports `category`, `city`, `startDate`, `endDate`, `status`, `page`, `size`, and `sort`
 - `GET /api/v1/events/{id}` and `/api/v1/events/{id}/seats`
 - Public: paginated `GET /api/v1/venues` and `GET /api/v1/venues/{id}`
-- Admin: venue CRUD, `POST /api/v1/venues/{venueId}/seats`, protected user role/status management, and `/api/v1/admin/statistics`; administrators cannot demote/suspend themselves or remove the last active administrator
+- Admin: venue CRUD, `POST /api/v1/venues/{venueId}/seats`, paginated protected user role/status management, and `/api/v1/admin/statistics`; administrators cannot demote/suspend themselves or remove the last active administrator
 - Organizer/admin: `POST`, `PUT`, `DELETE /api/v1/events[/{id}]` and `PUT /api/v1/events/{eventId}/inventory`
-- Customer: `POST /api/v1/bookings` with required `Idempotency-Key`, plus list, detail, and cancellation endpoints
+- Customer: `POST /api/v1/bookings` with required `Idempotency-Key`, plus paginated list, detail, and cancellation endpoints
 - Customer notifications: paginated `GET /api/v1/notifications`, `GET /api/v1/notifications/unread-count`, and `PATCH /api/v1/notifications/{id}/read`
-- `GET /api/v1/tickets`
+- Paginated `GET /api/v1/tickets`
+
+Collection endpoints for events, bookings, tickets, admin users, and notifications accept zero-based `page`, bounded `size`, and `sort=property,direction` parameters. The default page size is 20 and the maximum is 100. Booking, ticket, admin-user, and notification lists default to newest first; event search defaults to the nearest start time first. Responses use Spring's page envelope with `content`, page metadata, and total counts.
 
 Use `tok_success` for an approved mock payment and `tok_fail` for a declined payment. `tok_unknown` simulates a provider response with no definitive outcome; the API returns `503 PAYMENT_OUTCOME_UNKNOWN`, retains the seat hold, and flags the durable payment for reconciliation. Do not retry an unknown outcome with a new idempotency key. No card data is accepted.
 

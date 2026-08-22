@@ -6,6 +6,10 @@ import jakarta.validation.constraints.*;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.*;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.*;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
@@ -45,8 +49,11 @@ public class BookingController {
   }
 
   @GetMapping
-  List<BookingResponse> list(@AuthenticationPrincipal User u) {
-    return service.list(u);
+  Page<BookingResponse> list(
+      @AuthenticationPrincipal User u,
+      @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC)
+          Pageable pageable) {
+    return service.list(u, pageable);
   }
 
   @GetMapping("/{id}")

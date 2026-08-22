@@ -787,6 +787,39 @@ class ConcurrentBookingIntegrationTest {
   }
 
   @Test
+  void customerBookingAndTicketCollectionsArePaginated() throws Exception {
+    BookingFixture first = fixture();
+    BookingFixture second = fixture();
+    service.create(first.request(), "page-first-" + UUID.randomUUID(), first.customer());
+    service.create(second.request(), "page-second-" + UUID.randomUUID(), first.customer());
+    String token = bearer(first.customer());
+
+    mockMvc
+        .perform(
+            get("/api/v1/bookings")
+                .param("page", "0")
+                .param("size", "1")
+                .header("Authorization", token))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.content.length()").value(1))
+        .andExpect(jsonPath("$.number").value(0))
+        .andExpect(jsonPath("$.size").value(1))
+        .andExpect(jsonPath("$.totalElements").value(2));
+
+    mockMvc
+        .perform(
+            get("/api/v1/tickets")
+                .param("page", "0")
+                .param("size", "1")
+                .header("Authorization", token))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.content.length()").value(1))
+        .andExpect(jsonPath("$.number").value(0))
+        .andExpect(jsonPath("$.size").value(1))
+        .andExpect(jsonPath("$.totalElements").value(2));
+  }
+
+  @Test
   void suspendedUserCannotAuthenticateWithPreviouslyIssuedJwt() throws Exception {
     User customer = user("suspended-" + UUID.randomUUID() + "@example.com", User.Role.CUSTOMER);
     String token = bearer(customer);

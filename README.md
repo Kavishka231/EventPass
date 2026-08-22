@@ -11,6 +11,7 @@ The backend now includes:
 - Redis TTL locks plus PostgreSQL row and advisory locks, optimistic versions, server-side pricing, user-scoped request-bound booking idempotency, provider-enforced same-key charge/refund replay, durable payment and refund lifecycles with guarded transitions, concurrency-safe cancellation, seat resale, expiration, and cryptographically secure tickets;
 - versioned event envelopes, transactional outbox events with PostgreSQL `SKIP LOCKED` claiming, persisted exponential retries, explicitly provisioned Kafka topics, bounded consumer retries with dead-letter topics, atomic idempotent customer-notification creation, durable delivery state, and authenticated read APIs;
 - a uniform API error contract, explicit CORS and security headers, request/correlation IDs, production JSON logs, Redis rate limits, permissioned Prometheus business metrics, and PostgreSQL/Redis/Kafka readiness indicators;
+- bounded, sortable pagination for event, booking, ticket, administrator-user, and notification collections;
 - Java 21 formatting/build CI and PostgreSQL/Redis Testcontainers coverage for authorization, suspended/invalid sessions, seat contention, financial/admin races, competing outbox publishers, duplicate event delivery, and the full active-event cancellation chain.
 
 ## Repository structure

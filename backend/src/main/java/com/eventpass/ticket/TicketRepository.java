@@ -1,10 +1,12 @@
 package com.eventpass.ticket;
 
 import java.util.*;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface TicketRepository extends JpaRepository<Ticket, UUID> {
-  List<Ticket> findAllByBookingUserId(UUID userId);
+  Page<Ticket> findAllByBookingUserId(UUID userId, Pageable pageable);
 
   List<Ticket> findAllByBookingId(UUID bookingId);
 

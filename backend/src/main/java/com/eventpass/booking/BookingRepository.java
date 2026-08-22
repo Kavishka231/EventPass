@@ -2,6 +2,8 @@ package com.eventpass.booking;
 
 import java.time.Instant;
 import java.util.*;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
@@ -14,7 +16,7 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
   @Query(value = "SELECT pg_advisory_xact_lock(:lockId)", nativeQuery = true)
   void acquireIdempotencyLock(@Param("lockId") long lockId);
 
-  List<Booking> findAllByUserIdOrderByCreatedAtDesc(UUID userId);
+  Page<Booking> findAllByUserId(UUID userId, Pageable pageable);
 
   long countByStatus(Booking.Status status);
 

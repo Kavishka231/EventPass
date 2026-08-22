@@ -3,6 +3,10 @@ package com.eventpass.ticket;
 import com.eventpass.user.User;
 import java.time.Instant;
 import java.util.*;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
@@ -27,8 +31,12 @@ public class TicketController {
 
   @GetMapping
   @Transactional(readOnly = true)
-  List<TicketResponse> list(@AuthenticationPrincipal User u) {
-    return tickets.findAllByBookingUserId(u.getId()).stream()
+  Page<TicketResponse> list(
+      @AuthenticationPrincipal User u,
+      @PageableDefault(size = 20, sort = "issuedAt", direction = Sort.Direction.DESC)
+          Pageable pageable) {
+    return tickets
+        .findAllByBookingUserId(u.getId(), pageable)
         .map(
             t ->
                 new TicketResponse(
@@ -38,7 +46,6 @@ public class TicketController {
                     t.getEventSeat().getId(),
                     t.getQrToken(),
                     t.getStatus(),
-                    t.getIssuedAt()))
-        .toList();
+                    t.getIssuedAt()));
   }
 }

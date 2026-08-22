@@ -10,6 +10,8 @@ import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.*;
 import java.util.*;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -92,10 +94,8 @@ public class BookingService {
   }
 
   @Transactional(readOnly = true)
-  public List<BookingController.BookingResponse> list(User user) {
-    return bookings.findAllByUserIdOrderByCreatedAtDesc(user.getId()).stream()
-        .map(this::response)
-        .toList();
+  public Page<BookingController.BookingResponse> list(User user, Pageable pageable) {
+    return bookings.findAllByUserId(user.getId(), pageable).map(this::response);
   }
 
   @Transactional(readOnly = true)
