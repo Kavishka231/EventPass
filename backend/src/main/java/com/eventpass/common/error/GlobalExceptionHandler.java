@@ -6,6 +6,7 @@ import java.time.Instant;
 import java.util.stream.Collectors;
 import org.slf4j.*;
 import org.springframework.http.*;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.*;
 
@@ -36,6 +37,15 @@ public class GlobalExceptionHandler {
             .map(violation -> violation.getPropertyPath() + ": " + violation.getMessage())
             .collect(Collectors.joining(", "));
     return response(HttpStatus.BAD_REQUEST, "VALIDATION_FAILED", message, r);
+  }
+
+  @ExceptionHandler(AccessDeniedException.class)
+  ResponseEntity<ErrorResponse> accessDenied(AccessDeniedException e, HttpServletRequest request) {
+    return response(
+        HttpStatus.FORBIDDEN,
+        "FORBIDDEN",
+        "You are not authorized to perform this operation.",
+        request);
   }
 
   @ExceptionHandler(Exception.class)
