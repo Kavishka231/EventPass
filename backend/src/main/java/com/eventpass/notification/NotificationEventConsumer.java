@@ -1,5 +1,6 @@
 package com.eventpass.notification;
 
+import com.eventpass.common.kafka.KafkaTopics;
 import com.eventpass.common.outbox.EventEnvelope;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -24,7 +25,8 @@ public class NotificationEventConsumer {
     this.processedEvents = processedEvents;
   }
 
-  @KafkaListener(topics = {"booking.events", "payment.events", "ticket.events"})
+  @KafkaListener(
+      topics = {KafkaTopics.BOOKING_EVENTS, KafkaTopics.PAYMENT_EVENTS, KafkaTopics.TICKET_EVENTS})
   public void consume(String payload, @Header(KafkaHeaders.RECEIVED_TOPIC) String topic)
       throws Exception {
     EventEnvelope<JsonNode> event =

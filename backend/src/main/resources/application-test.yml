@@ -3,3 +3,4 @@ spring:
   jpa.show-sql: false
 eventpass.jwt.secret: integration-test-secret-at-least-32-characters-long
 eventpass.outbox.enabled: false
+eventpass.kafka.provisioning-enabled: false

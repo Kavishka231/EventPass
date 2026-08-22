@@ -1,5 +1,7 @@
 spring:
   jpa.properties.hibernate.jdbc.time_zone: UTC
   lifecycle.timeout-per-shutdown-phase: 30s
+  kafka.listener.missing-topics-fatal: true
 logging.level.root: INFO
 eventpass.jwt.secret: ${JWT_SECRET}
+eventpass.kafka.topics.replication-factor: ${KAFKA_TOPIC_REPLICATION_FACTOR:3}
