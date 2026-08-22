@@ -4,4 +4,6 @@ Passwords use BCrypt cost 12. Access JWTs last 15 minutes and use an explicitly 
 
 Suspended or disabled accounts cannot log in, refresh, or authenticate an existing JWT. Public registration always creates customers. A first administrator is created only when both bootstrap environment variables are explicitly supplied; public role elevation is impossible. Administrator APIs require the `ADMIN` role, administrators cannot demote or suspend themselves, and PostgreSQL serializes lifecycle changes so the last active administrator cannot be removed. Redis rate limits authentication and booking writes, while PostgreSQL remains authoritative for booking consistency.
 
+Browser access uses an explicit credentialed CORS origin allowlist; wildcard origins are rejected. Health/liveness/readiness probes are public, while all other Actuator endpoints require an administrator. Authentication and access-denied failures use the standard JSON error envelope without exposing security exceptions. Responses deny framing, cross-origin capabilities, referrer leakage, and undeclared content sources; production enables HSTS and disables Swagger/OpenAPI endpoints.
+
 Production secrets must be injected through environment variables. HTTPS and restrictive CORS should be configured at the deployment ingress for approved origins.

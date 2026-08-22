@@ -2,7 +2,15 @@ package com.eventpass.booking;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.eventpass.auth.AuthController;
+import com.eventpass.auth.AuthService;
+import com.eventpass.auth.JwtService;
 import com.eventpass.common.error.ApiException;
 import com.eventpass.common.outbox.OutboxEvent;
 import com.eventpass.common.outbox.OutboxEventRepository;
@@ -27,11 +35,14 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.containers.GenericContainer;
@@ -42,6 +53,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 @Testcontainers(disabledWithoutDocker = true)
 @SpringBootTest
 @ActiveProfiles("test")
+@AutoConfigureMockMvc
 class ConcurrentBookingIntegrationTest {
   @Container
   static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine");
@@ -79,6 +91,9 @@ class ConcurrentBookingIntegrationTest {
   @Autowired ProcessedEventService processedEvents;
   @Autowired NotificationEventConsumer notificationConsumer;
   @Autowired NotificationRepository notifications;
+  @Autowired MockMvc mockMvc;
+  @Autowired JwtService jwtService;
+  @Autowired AuthService authService;
 
   @Test
   void exactlyOneOfTwentyCustomersCanBuyTheSameSeat() throws Exception {
@@ -728,6 +743,108 @@ class ConcurrentBookingIntegrationTest {
     assertThat(successfulChanges).hasValue(1);
     assertThat(rejectedCodes).containsExactly("LAST_ACTIVE_ADMIN_REQUIRED");
     assertThat(users.countByRoleAndStatus(User.Role.ADMIN, User.Status.ACTIVE)).isEqualTo(1);
+  }
+
+  @Test
+  void customerCannotAccessAdministratorEndpoint() throws Exception {
+    User customer =
+        user("security-customer-" + UUID.randomUUID() + "@example.com", User.Role.CUSTOMER);
+
+    mockMvc
+        .perform(get("/api/v1/admin/statistics").header("Authorization", bearer(customer)))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.error").value("FORBIDDEN"));
+  }
+
+  @Test
+  void organizerCannotCancelAnotherOrganizersEvent() throws Exception {
+    BookingFixture owned = fixture();
+    User otherOrganizer =
+        user("other-organizer-" + UUID.randomUUID() + "@example.com", User.Role.ORGANIZER);
+
+    mockMvc
+        .perform(
+            delete("/api/v1/events/{id}", owned.event().getId())
+                .header("Authorization", bearer(otherOrganizer)))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.error").value("EVENT_FORBIDDEN"));
+  }
+
+  @Test
+  void administratorCanAccessProtectedOperations() throws Exception {
+    User administrator =
+        user("authorized-admin-" + UUID.randomUUID() + "@example.com", User.Role.ADMIN);
+
+    try {
+      mockMvc
+          .perform(get("/api/v1/admin/statistics").header("Authorization", bearer(administrator)))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.users").isNumber());
+    } finally {
+      administrator.setStatus(User.Status.DISABLED);
+      users.saveAndFlush(administrator);
+    }
+  }
+
+  @Test
+  void suspendedUserCannotAuthenticateWithPreviouslyIssuedJwt() throws Exception {
+    User customer = user("suspended-" + UUID.randomUUID() + "@example.com", User.Role.CUSTOMER);
+    String token = bearer(customer);
+    customer.setStatus(User.Status.SUSPENDED);
+    users.saveAndFlush(customer);
+
+    mockMvc
+        .perform(get("/api/v1/bookings").header("Authorization", token))
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.error").value("UNAUTHORIZED"));
+  }
+
+  @Test
+  void invalidAndExpiredJwtAreRejected() throws Exception {
+    mockMvc
+        .perform(get("/api/v1/bookings").header("Authorization", "Bearer invalid.jwt.token"))
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.error").value("UNAUTHORIZED"));
+
+    User customer = user("expired-" + UUID.randomUUID() + "@example.com", User.Role.CUSTOMER);
+    JwtService expiredTokens =
+        new JwtService(
+            "integration-test-secret-at-least-32-characters-long",
+            java.time.Duration.ofSeconds(-1),
+            "eventpass",
+            "eventpass-api",
+            "eventpass-primary");
+    mockMvc
+        .perform(
+            get("/api/v1/bookings")
+                .header("Authorization", "Bearer " + expiredTokens.create(customer)))
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.error").value("UNAUTHORIZED"));
+  }
+
+  @Test
+  void reusedRefreshTokenRevokesItsSessionFamily() throws Exception {
+    AuthController.AuthResponse authentication =
+        authService.register(
+            new AuthController.RegisterRequest(
+                "refresh-reuse-" + UUID.randomUUID() + "@example.com",
+                "strong-test-password",
+                "Refresh",
+                "Reuse"),
+            "Integration test browser");
+    String body = "{\"refreshToken\":\"" + authentication.refreshToken() + "\"}";
+
+    mockMvc
+        .perform(post("/api/v1/auth/refresh").contentType(MediaType.APPLICATION_JSON).content(body))
+        .andExpect(status().isOk());
+    mockMvc
+        .perform(post("/api/v1/auth/refresh").contentType(MediaType.APPLICATION_JSON).content(body))
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.error").value("REFRESH_TOKEN_REUSE_DETECTED"));
+  }
+
+  private String bearer(User user) {
+    return "Bearer " + jwtService.create(user);
   }
 
   private void changeAdministrator(

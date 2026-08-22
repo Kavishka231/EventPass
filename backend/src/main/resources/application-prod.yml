@@ -4,4 +4,8 @@ spring:
   kafka.listener.missing-topics-fatal: true
 logging.level.root: INFO
 eventpass.jwt.secret: ${JWT_SECRET}
+eventpass.security.cors.allowed-origins: ${CORS_ALLOWED_ORIGINS}
 eventpass.kafka.topics.replication-factor: ${KAFKA_TOPIC_REPLICATION_FACTOR:3}
+springdoc:
+  api-docs.enabled: false
+  swagger-ui.enabled: false

@@ -24,6 +24,8 @@ public class RequestCorrelationFilter extends OncePerRequestFilter {
     long started = System.nanoTime();
     MDC.put("requestId", requestId);
     MDC.put("correlationId", correlationId);
+    request.setAttribute("requestId", requestId);
+    request.setAttribute("correlationId", correlationId);
     response.setHeader("X-Request-Id", requestId);
     response.setHeader("X-Correlation-Id", correlationId);
     try {

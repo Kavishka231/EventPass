@@ -6,15 +6,13 @@ import java.time.Instant;
 import java.util.stream.Collectors;
 import org.slf4j.*;
 import org.springframework.http.*;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.*;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
   private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
-
-  record ErrorResponse(
-      Instant timestamp, int status, String error, String message, String path, String requestId) {}
 
   @ExceptionHandler(ApiException.class)
   ResponseEntity<ErrorResponse> api(ApiException e, HttpServletRequest r) {
@@ -41,6 +39,15 @@ public class GlobalExceptionHandler {
     return response(HttpStatus.BAD_REQUEST, "VALIDATION_FAILED", message, r);
   }
 
+  @ExceptionHandler(AccessDeniedException.class)
+  ResponseEntity<ErrorResponse> accessDenied(AccessDeniedException e, HttpServletRequest request) {
+    return response(
+        HttpStatus.FORBIDDEN,
+        "FORBIDDEN",
+        "You are not authorized to perform this operation.",
+        request);
+  }
+
   @ExceptionHandler(Exception.class)
   ResponseEntity<ErrorResponse> unknown(Exception e, HttpServletRequest r) {
     log.error("Unhandled request failure", e);
@@ -51,8 +58,11 @@ public class GlobalExceptionHandler {
   private ResponseEntity<ErrorResponse> response(
       HttpStatus s, String c, String m, HttpServletRequest r) {
     return ResponseEntity.status(s)
-        .body(
-            new ErrorResponse(
-                Instant.now(), s.value(), c, m, r.getRequestURI(), r.getHeader("X-Request-Id")));
+        .body(new ErrorResponse(Instant.now(), s.value(), c, m, r.getRequestURI(), requestId(r)));
+  }
+
+  private String requestId(HttpServletRequest request) {
+    Object generated = request.getAttribute("requestId");
+    return generated == null ? request.getHeader("X-Request-Id") : generated.toString();
   }
 }
