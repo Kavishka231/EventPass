@@ -18,3 +18,5 @@ Use `tok_success` for an approved mock payment and `tok_fail` for a declined pay
 New events must start as `DRAFT`; seat pricing must be configured before `PUBLISHED`. Public event and inventory reads expose published events only. Confirmed bookings may be cancelled more than 24 hours before an event; cancellation refunds the payment, cancels tickets, and releases seats.
 
 `DELETE /api/v1/events/{id}` performs the organizer/admin cancellation transition. Cancelled events cannot be republished, have inventory reconfigured, or accept bookings. Every issued ticket is immediately returned with status `CANCELLED`, including when a provider refund needs follow-up. Confirmed bookings are sent through durable refunds; successful refunds release their inventory. A transient `409 EVENT_HAS_PENDING_BOOKINGS` requires cancellation to be retried after in-flight payment attempts finish.
+
+Administrators can call `POST /api/v1/admin/outbox/{id}/retry` to reset a `FAILED` outbox event for immediate delivery. Non-failed or unknown event IDs return a conflict or not-found error respectively.

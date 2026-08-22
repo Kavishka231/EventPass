@@ -13,14 +13,24 @@ spring:
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     consumer:
-      group-id: eventpass
+      group-id: ${KAFKA_CONSUMER_GROUP:eventpass-notifications-v1}
       auto-offset-reset: earliest
       enable-auto-commit: false
+      max-poll-records: 100
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      properties:
+        allow.auto.create.topics: false
+        isolation.level: read_committed
+    producer:
+      acks: all
+      retries: 2147483647
+      properties:
+        enable.idempotence: true
     listener:
       ack-mode: record
       missing-topics-fatal: false
+      concurrency: ${KAFKA_CONSUMER_CONCURRENCY:3}
   jackson:
     default-property-inclusion: non_null
 server:
@@ -46,4 +56,11 @@ eventpass:
   outbox:
     enabled: ${OUTBOX_ENABLED:true}
     publish-delay: PT2S
+  kafka:
+    provisioning-enabled: ${KAFKA_TOPIC_PROVISIONING_ENABLED:true}
+    topics:
+      partitions: ${KAFKA_TOPIC_PARTITIONS:6}
+      replication-factor: ${KAFKA_TOPIC_REPLICATION_FACTOR:1}
+      retention: ${KAFKA_TOPIC_RETENTION_MS:604800000}
+      dlt-retention: ${KAFKA_DLT_RETENTION_MS:2592000000}
 springdoc.swagger-ui.path: /swagger-ui.html
