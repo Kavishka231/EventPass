@@ -5,7 +5,6 @@ import com.eventpass.common.outbox.EventEnvelope;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.util.UUID;
 import org.slf4j.*;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.support.KafkaHeaders;
@@ -15,14 +14,13 @@ import org.springframework.stereotype.Component;
 @Component
 public class NotificationEventConsumer {
   private static final Logger log = LoggerFactory.getLogger(NotificationEventConsumer.class);
-  private static final String CONSUMER = "notification-consumer";
   private final ObjectMapper objectMapper;
-  private final ProcessedEventService processedEvents;
+  private final NotificationEventService notificationEvents;
 
   public NotificationEventConsumer(
-      ObjectMapper objectMapper, ProcessedEventService processedEvents) {
+      ObjectMapper objectMapper, NotificationEventService notificationEvents) {
     this.objectMapper = objectMapper;
-    this.processedEvents = processedEvents;
+    this.notificationEvents = notificationEvents;
   }
 
   @KafkaListener(
@@ -31,15 +29,12 @@ public class NotificationEventConsumer {
       throws Exception {
     EventEnvelope<JsonNode> event =
         objectMapper.readValue(payload, new TypeReference<EventEnvelope<JsonNode>>() {});
-    UUID eventId = event.eventId();
-    if (!processedEvents.claim(CONSUMER, eventId)) {
-      return;
-    }
+    if (!notificationEvents.handle(event)) return;
     log.info(
         "notification_event_received topic={} eventType={} version={} eventId={}",
         topic,
         event.eventType(),
         event.version(),
-        eventId);
+        event.eventId());
   }
 }
