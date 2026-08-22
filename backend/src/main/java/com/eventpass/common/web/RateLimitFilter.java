@@ -1,5 +1,6 @@
 package com.eventpass.common.web;
 
+import com.eventpass.common.error.ErrorResponseWriter;
 import com.eventpass.user.User;
 import jakarta.servlet.*;
 import jakarta.servlet.http.*;
@@ -19,9 +20,11 @@ public class RateLimitFilter extends OncePerRequestFilter {
           "local n=redis.call('incr',KEYS[1]); if n==1 then redis.call('expire',KEYS[1],ARGV[1]) end; return n",
           Long.class);
   private final StringRedisTemplate redis;
+  private final ErrorResponseWriter errors;
 
-  public RateLimitFilter(StringRedisTemplate redis) {
+  public RateLimitFilter(StringRedisTemplate redis, ErrorResponseWriter errors) {
     this.redis = redis;
+    this.errors = errors;
   }
 
   @Override
@@ -46,12 +49,8 @@ public class RateLimitFilter extends OncePerRequestFilter {
       response.setHeader("X-RateLimit-Limit", Integer.toString(limit));
       response.setHeader("X-RateLimit-Remaining", Long.toString(Math.max(0, limit - count)));
       if (count > limit) {
-        response.setStatus(429);
-        response.setContentType("application/json");
-        response
-            .getWriter()
-            .write(
-                "{\"status\":429,\"error\":\"RATE_LIMIT_EXCEEDED\",\"message\":\"Too many requests. Try again later.\"}");
+        errors.write(
+            request, response, 429, "RATE_LIMIT_EXCEEDED", "Too many requests. Try again later.");
         return;
       }
     } catch (RedisConnectionFailureException ignored) {

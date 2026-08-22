@@ -753,7 +753,7 @@ class ConcurrentBookingIntegrationTest {
     mockMvc
         .perform(get("/api/v1/admin/statistics").header("Authorization", bearer(customer)))
         .andExpect(status().isForbidden())
-        .andExpect(jsonPath("$.error").value("FORBIDDEN"));
+        .andExpect(jsonPath("$.code").value("FORBIDDEN"));
   }
 
   @Test
@@ -767,7 +767,7 @@ class ConcurrentBookingIntegrationTest {
             delete("/api/v1/events/{id}", owned.event().getId())
                 .header("Authorization", bearer(otherOrganizer)))
         .andExpect(status().isForbidden())
-        .andExpect(jsonPath("$.error").value("EVENT_FORBIDDEN"));
+        .andExpect(jsonPath("$.code").value("EVENT_FORBIDDEN"));
   }
 
   @Test
@@ -796,7 +796,7 @@ class ConcurrentBookingIntegrationTest {
     mockMvc
         .perform(get("/api/v1/bookings").header("Authorization", token))
         .andExpect(status().isUnauthorized())
-        .andExpect(jsonPath("$.error").value("UNAUTHORIZED"));
+        .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
   }
 
   @Test
@@ -804,7 +804,7 @@ class ConcurrentBookingIntegrationTest {
     mockMvc
         .perform(get("/api/v1/bookings").header("Authorization", "Bearer invalid.jwt.token"))
         .andExpect(status().isUnauthorized())
-        .andExpect(jsonPath("$.error").value("UNAUTHORIZED"));
+        .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
 
     User customer = user("expired-" + UUID.randomUUID() + "@example.com", User.Role.CUSTOMER);
     JwtService expiredTokens =
@@ -819,7 +819,7 @@ class ConcurrentBookingIntegrationTest {
             get("/api/v1/bookings")
                 .header("Authorization", "Bearer " + expiredTokens.create(customer)))
         .andExpect(status().isUnauthorized())
-        .andExpect(jsonPath("$.error").value("UNAUTHORIZED"));
+        .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
   }
 
   @Test
@@ -840,7 +840,29 @@ class ConcurrentBookingIntegrationTest {
     mockMvc
         .perform(post("/api/v1/auth/refresh").contentType(MediaType.APPLICATION_JSON).content(body))
         .andExpect(status().isUnauthorized())
-        .andExpect(jsonPath("$.error").value("REFRESH_TOKEN_REUSE_DETECTED"));
+        .andExpect(jsonPath("$.code").value("REFRESH_TOKEN_REUSE_DETECTED"));
+  }
+
+  @Test
+  void validationAndNotFoundErrorsUseTheStandardContract() throws Exception {
+    mockMvc
+        .perform(
+            post("/api/v1/auth/register")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"email\":\"invalid\",\"password\":\"short\"}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+        .andExpect(jsonPath("$.timestamp").exists())
+        .andExpect(jsonPath("$.status").value(400))
+        .andExpect(jsonPath("$.message").isString())
+        .andExpect(jsonPath("$.path").value("/api/v1/auth/register"))
+        .andExpect(jsonPath("$.requestId").isString());
+
+    mockMvc
+        .perform(get("/api/v1/events/{id}", UUID.randomUUID()))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.code").value("EVENT_NOT_FOUND"))
+        .andExpect(jsonPath("$.status").value(404));
   }
 
   private String bearer(User user) {

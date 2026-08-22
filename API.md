@@ -2,6 +2,8 @@
 
 Swagger/OpenAPI is available at `/swagger-ui.html` and `/v3/api-docs`.
 
+Every error uses `{timestamp, status, code, message, path, requestId}`. Validation and malformed input return `400`; missing resources return `404`; domain, database-constraint, and optimistic-lock conflicts return `409`; authentication/authorization return `401`/`403`; and unexpected failures return a generic `500` without internal details.
+
 - `POST /api/v1/auth/register`, `/login`, `/refresh`, `/logout`
 - `GET /api/v1/events` supports `category`, `city`, `startDate`, `endDate`, `status`, `page`, `size`, and `sort`
 - `GET /api/v1/events/{id}` and `/api/v1/events/{id}/seats`

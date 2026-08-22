@@ -2,6 +2,7 @@ package com.eventpass.auth;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.eventpass.common.error.ErrorResponseWriter;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
@@ -11,7 +12,8 @@ import org.springframework.security.authentication.BadCredentialsException;
 
 class SecurityErrorHandlerTest {
   private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
-  private final SecurityErrorHandler handler = new SecurityErrorHandler(objectMapper);
+  private final SecurityErrorHandler handler =
+      new SecurityErrorHandler(new ErrorResponseWriter(objectMapper));
 
   @Test
   void writesConsistentUnauthorizedResponse() throws Exception {
@@ -45,7 +47,7 @@ class SecurityErrorHandlerTest {
     assertThat(response.getStatus()).isEqualTo(status);
     assertThat(response.getContentType()).isEqualTo("application/json");
     assertThat(body.path("status").asInt()).isEqualTo(status);
-    assertThat(body.path("error").asText()).isEqualTo(code);
+    assertThat(body.path("code").asText()).isEqualTo(code);
     assertThat(body.path("path").asText()).isEqualTo("/api/v1/bookings");
     assertThat(body.path("requestId").asText()).isEqualTo("request-123");
     assertThat(body.hasNonNull("timestamp")).isTrue();
