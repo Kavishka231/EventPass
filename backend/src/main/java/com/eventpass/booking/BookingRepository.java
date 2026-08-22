@@ -16,7 +16,22 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
   @Query(value = "SELECT pg_advisory_xact_lock(:lockId)", nativeQuery = true)
   void acquireIdempotencyLock(@Param("lockId") long lockId);
 
-  Page<Booking> findAllByUserId(UUID userId, Pageable pageable);
+  @Query(
+      value =
+          """
+          select new com.eventpass.booking.BookingListRow(
+            booking.id,
+            booking.bookingReference,
+            booking.event.id,
+            booking.status,
+            booking.totalAmount,
+            booking.currency,
+            booking.createdAt)
+          from Booking booking
+          where booking.user.id = :userId
+          """,
+      countQuery = "select count(booking) from Booking booking where booking.user.id = :userId")
+  Page<BookingListRow> findListRowsByUserId(@Param("userId") UUID userId, Pageable pageable);
 
   long countByStatus(Booking.Status status);
 

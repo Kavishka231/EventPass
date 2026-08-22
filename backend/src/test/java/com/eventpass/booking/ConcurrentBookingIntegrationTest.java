@@ -26,13 +26,16 @@ import com.eventpass.payment.Refund;
 import com.eventpass.payment.RefundRepository;
 import com.eventpass.seat.*;
 import com.eventpass.ticket.TicketRepository;
+import com.eventpass.ticket.TicketService;
 import com.eventpass.user.*;
 import com.eventpass.venue.*;
+import jakarta.persistence.EntityManagerFactory;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.hibernate.SessionFactory;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -69,6 +72,7 @@ class ConcurrentBookingIntegrationTest {
     r.add("spring.datasource.password", postgres::getPassword);
     r.add("spring.data.redis.host", redis::getHost);
     r.add("spring.data.redis.port", () -> redis.getMappedPort(6379));
+    r.add("spring.jpa.properties.hibernate.generate_statistics", () -> true);
   }
 
   @Autowired BookingService service;
@@ -84,6 +88,7 @@ class ConcurrentBookingIntegrationTest {
   @Autowired PaymentProvider paymentProvider;
   @Autowired RefundRepository refunds;
   @Autowired TicketRepository tickets;
+  @Autowired TicketService ticketService;
   @Autowired OutboxEventRepository outboxEvents;
   @Autowired PlatformTransactionManager transactionManager;
   @Autowired OutboxRecoveryService outboxRecovery;
@@ -94,6 +99,7 @@ class ConcurrentBookingIntegrationTest {
   @Autowired MockMvc mockMvc;
   @Autowired JwtService jwtService;
   @Autowired AuthService authService;
+  @Autowired EntityManagerFactory entityManagerFactory;
 
   @Test
   void exactlyOneOfTwentyCustomersCanBuyTheSameSeat() throws Exception {
@@ -817,6 +823,27 @@ class ConcurrentBookingIntegrationTest {
         .andExpect(jsonPath("$.number").value(0))
         .andExpect(jsonPath("$.size").value(1))
         .andExpect(jsonPath("$.totalElements").value(2));
+  }
+
+  @Test
+  void bookingAndTicketHistoryUseConstantQueryCounts() {
+    BookingFixture first = fixture();
+    BookingFixture second = fixture();
+    service.create(first.request(), "query-first-" + UUID.randomUUID(), first.customer());
+    service.create(second.request(), "query-second-" + UUID.randomUUID(), first.customer());
+    var statistics = entityManagerFactory.unwrap(SessionFactory.class).getStatistics();
+
+    statistics.clear();
+    var bookingPage = service.list(first.customer(), PageRequest.of(0, 20));
+    assertThat(bookingPage.getContent()).hasSize(2);
+    assertThat(bookingPage.getContent())
+        .allSatisfy(booking -> assertThat(booking.eventSeatIds()).hasSize(1));
+    assertThat(statistics.getPrepareStatementCount()).isEqualTo(2);
+
+    statistics.clear();
+    var ticketPage = ticketService.list(first.customer(), PageRequest.of(0, 20));
+    assertThat(ticketPage.getContent()).hasSize(2);
+    assertThat(statistics.getPrepareStatementCount()).isEqualTo(1);
   }
 
   @Test

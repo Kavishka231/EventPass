@@ -8,16 +8,15 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/v1/tickets")
 public class TicketController {
-  private final TicketRepository tickets;
+  private final TicketService service;
 
-  public TicketController(TicketRepository tickets) {
-    this.tickets = tickets;
+  public TicketController(TicketService service) {
+    this.service = service;
   }
 
   public record TicketResponse(
@@ -30,22 +29,10 @@ public class TicketController {
       Instant issuedAt) {}
 
   @GetMapping
-  @Transactional(readOnly = true)
   Page<TicketResponse> list(
       @AuthenticationPrincipal User u,
       @PageableDefault(size = 20, sort = "issuedAt", direction = Sort.Direction.DESC)
           Pageable pageable) {
-    return tickets
-        .findAllByBookingUserId(u.getId(), pageable)
-        .map(
-            t ->
-                new TicketResponse(
-                    t.getId(),
-                    t.getTicketNumber(),
-                    t.getBooking().getId(),
-                    t.getEventSeat().getId(),
-                    t.getQrToken(),
-                    t.getStatus(),
-                    t.getIssuedAt()));
+    return service.list(u, pageable);
   }
 }
