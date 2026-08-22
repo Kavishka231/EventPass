@@ -8,6 +8,8 @@ import com.eventpass.common.outbox.OutboxEvent;
 import com.eventpass.common.outbox.OutboxEventRepository;
 import com.eventpass.common.outbox.OutboxRecoveryService;
 import com.eventpass.event.*;
+import com.eventpass.notification.NotificationEventConsumer;
+import com.eventpass.notification.NotificationRepository;
 import com.eventpass.notification.ProcessedEventService;
 import com.eventpass.payment.Payment;
 import com.eventpass.payment.PaymentProvider;
@@ -26,6 +28,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -73,6 +76,8 @@ class ConcurrentBookingIntegrationTest {
   @Autowired PlatformTransactionManager transactionManager;
   @Autowired OutboxRecoveryService outboxRecovery;
   @Autowired ProcessedEventService processedEvents;
+  @Autowired NotificationEventConsumer notificationConsumer;
+  @Autowired NotificationRepository notifications;
 
   @Test
   void exactlyOneOfTwentyCustomersCanBuyTheSameSeat() throws Exception {
@@ -669,6 +674,28 @@ class ConcurrentBookingIntegrationTest {
 
     assertThat(firstDelivery).isTrue();
     assertThat(duplicateDelivery).isFalse();
+  }
+
+  @Test
+  void duplicateKafkaEventCreatesOneCustomerNotification() throws Exception {
+    BookingFixture fixture = fixture();
+    BookingController.BookingResponse booking =
+        service.create(fixture.request(), "notification-" + UUID.randomUUID(), fixture.customer());
+    OutboxEvent paymentCompleted =
+        outboxEvents.findAll().stream()
+            .filter(event -> event.getAggregateId().equals(booking.id()))
+            .filter(event -> event.getEventType().equals("PAYMENT_COMPLETED"))
+            .findFirst()
+            .orElseThrow();
+
+    notificationConsumer.consume(paymentCompleted.getPayload(), paymentCompleted.getTopic());
+    notificationConsumer.consume(paymentCompleted.getPayload(), paymentCompleted.getTopic());
+
+    var stored = notifications.findAllByUserId(fixture.customer().getId(), PageRequest.of(0, 20));
+    assertThat(stored.getTotalElements()).isEqualTo(1);
+    assertThat(stored.getContent().getFirst().getSourceEventId())
+        .isEqualTo(paymentCompleted.getId());
+    assertThat(stored.getContent().getFirst().getType()).isEqualTo("PAYMENT_COMPLETED");
   }
 
   @Test
