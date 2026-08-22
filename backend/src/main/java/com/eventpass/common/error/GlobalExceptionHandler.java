@@ -13,9 +13,6 @@ import org.springframework.web.bind.annotation.*;
 public class GlobalExceptionHandler {
   private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
-  record ErrorResponse(
-      Instant timestamp, int status, String error, String message, String path, String requestId) {}
-
   @ExceptionHandler(ApiException.class)
   ResponseEntity<ErrorResponse> api(ApiException e, HttpServletRequest r) {
     return response(e.status(), e.code(), e.getMessage(), r);
@@ -51,8 +48,11 @@ public class GlobalExceptionHandler {
   private ResponseEntity<ErrorResponse> response(
       HttpStatus s, String c, String m, HttpServletRequest r) {
     return ResponseEntity.status(s)
-        .body(
-            new ErrorResponse(
-                Instant.now(), s.value(), c, m, r.getRequestURI(), r.getHeader("X-Request-Id")));
+        .body(new ErrorResponse(Instant.now(), s.value(), c, m, r.getRequestURI(), requestId(r)));
+  }
+
+  private String requestId(HttpServletRequest request) {
+    Object generated = request.getAttribute("requestId");
+    return generated == null ? request.getHeader("X-Request-Id") : generated.toString();
   }
 }
