@@ -8,6 +8,7 @@ import com.eventpass.common.outbox.OutboxEvent;
 import com.eventpass.common.outbox.OutboxEventRepository;
 import com.eventpass.common.outbox.OutboxRecoveryService;
 import com.eventpass.event.*;
+import com.eventpass.notification.ProcessedEventService;
 import com.eventpass.payment.Payment;
 import com.eventpass.payment.PaymentProvider;
 import com.eventpass.payment.PaymentRepository;
@@ -71,6 +72,7 @@ class ConcurrentBookingIntegrationTest {
   @Autowired OutboxEventRepository outboxEvents;
   @Autowired PlatformTransactionManager transactionManager;
   @Autowired OutboxRecoveryService outboxRecovery;
+  @Autowired ProcessedEventService processedEvents;
 
   @Test
   void exactlyOneOfTwentyCustomersCanBuyTheSameSeat() throws Exception {
@@ -590,7 +592,7 @@ class ConcurrentBookingIntegrationTest {
   }
 
   @Test
-  void competingOutboxWorkersCannotClaimTheSameRow() throws Exception {
+  void competingOutboxPublishersDeliverTheClaimedRowOnlyOnce() throws Exception {
     outboxEvents.deleteAll();
     OutboxEvent pending = new OutboxEvent();
     pending.setId(UUID.randomUUID());
@@ -606,6 +608,7 @@ class ConcurrentBookingIntegrationTest {
     CountDownLatch releaseFirst = new CountDownLatch(1);
     Queue<UUID> firstWorkerClaims = new ConcurrentLinkedQueue<>();
     Queue<UUID> secondWorkerClaims = new ConcurrentLinkedQueue<>();
+    AtomicInteger deliveries = new AtomicInteger();
 
     try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
       Future<?> first =
@@ -616,7 +619,11 @@ class ConcurrentBookingIntegrationTest {
                         status -> {
                           outboxEvents.claimPendingBatch(10, 1).stream()
                               .map(OutboxEvent::getId)
-                              .forEach(firstWorkerClaims::add);
+                              .forEach(
+                                  id -> {
+                                    firstWorkerClaims.add(id);
+                                    deliveries.incrementAndGet();
+                                  });
                           firstClaimed.countDown();
                           try {
                             releaseFirst.await();
@@ -636,7 +643,11 @@ class ConcurrentBookingIntegrationTest {
                         status ->
                             outboxEvents.claimPendingBatch(10, 1).stream()
                                 .map(OutboxEvent::getId)
-                                .forEach(secondWorkerClaims::add));
+                                .forEach(
+                                    id -> {
+                                      secondWorkerClaims.add(id);
+                                      deliveries.incrementAndGet();
+                                    }));
                 releaseFirst.countDown();
                 return null;
               });
@@ -646,6 +657,18 @@ class ConcurrentBookingIntegrationTest {
 
     assertThat(firstWorkerClaims).containsExactly(pending.getId());
     assertThat(secondWorkerClaims).isEmpty();
+    assertThat(deliveries).hasValue(1);
+  }
+
+  @Test
+  void duplicateEventDeliveryIsClaimedOnlyOnceByAConsumer() {
+    UUID eventId = UUID.randomUUID();
+
+    boolean firstDelivery = processedEvents.claim("outbox-reliability-test", eventId);
+    boolean duplicateDelivery = processedEvents.claim("outbox-reliability-test", eventId);
+
+    assertThat(firstDelivery).isTrue();
+    assertThat(duplicateDelivery).isFalse();
   }
 
   @Test
