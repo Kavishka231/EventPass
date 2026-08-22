@@ -6,7 +6,7 @@ Swagger/OpenAPI is available at `/swagger-ui.html` and `/v3/api-docs`.
 - `GET /api/v1/events` supports `category`, `city`, `startDate`, `endDate`, `status`, `page`, `size`, and `sort`
 - `GET /api/v1/events/{id}` and `/api/v1/events/{id}/seats`
 - Public: paginated `GET /api/v1/venues` and `GET /api/v1/venues/{id}`
-- Admin: venue CRUD, `POST /api/v1/venues/{venueId}/seats`, user role/status management, and `/api/v1/admin/statistics`
+- Admin: venue CRUD, `POST /api/v1/venues/{venueId}/seats`, protected user role/status management, and `/api/v1/admin/statistics`; administrators cannot demote/suspend themselves or remove the last active administrator
 - Organizer/admin: `POST`, `PUT`, `DELETE /api/v1/events[/{id}]` and `PUT /api/v1/events/{eventId}/inventory`
 - Customer: `POST /api/v1/bookings` with required `Idempotency-Key`, plus list, detail, and cancellation endpoints
 - Customer notifications: paginated `GET /api/v1/notifications`, `GET /api/v1/notifications/unread-count`, and `PATCH /api/v1/notifications/{id}/read`

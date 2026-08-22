@@ -8,6 +8,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -41,8 +42,11 @@ public class AdminController {
   }
 
   @PutMapping("/users/{id}")
-  public UserResponse update(@PathVariable UUID id, @Valid @RequestBody UpdateUserRequest request) {
-    return service.update(id, request);
+  public UserResponse update(
+      @PathVariable UUID id,
+      @Valid @RequestBody UpdateUserRequest request,
+      @AuthenticationPrincipal User actor) {
+    return service.update(id, request, actor);
   }
 
   @GetMapping("/statistics")
