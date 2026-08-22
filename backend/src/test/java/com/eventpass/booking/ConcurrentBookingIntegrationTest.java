@@ -75,6 +75,7 @@ class ConcurrentBookingIntegrationTest {
   @Autowired OutboxEventRepository outboxEvents;
   @Autowired PlatformTransactionManager transactionManager;
   @Autowired OutboxRecoveryService outboxRecovery;
+  @Autowired AdminService adminService;
   @Autowired ProcessedEventService processedEvents;
   @Autowired NotificationEventConsumer notificationConsumer;
   @Autowired NotificationRepository notifications;
@@ -696,6 +697,60 @@ class ConcurrentBookingIntegrationTest {
     assertThat(stored.getContent().getFirst().getSourceEventId())
         .isEqualTo(paymentCompleted.getId());
     assertThat(stored.getContent().getFirst().getType()).isEqualTo("PAYMENT_COMPLETED");
+  }
+
+  @Test
+  void concurrentAdministratorChangesPreserveOneActiveAdministrator() throws Exception {
+    User first = user("admin-first-" + UUID.randomUUID() + "@example.com", User.Role.ADMIN);
+    User second = user("admin-second-" + UUID.randomUUID() + "@example.com", User.Role.ADMIN);
+    CountDownLatch ready = new CountDownLatch(2);
+    CountDownLatch start = new CountDownLatch(1);
+    AtomicInteger successfulChanges = new AtomicInteger();
+    Queue<String> rejectedCodes = new ConcurrentLinkedQueue<>();
+
+    try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+      Future<?> firstChange =
+          executor.submit(
+              () ->
+                  changeAdministrator(
+                      first, second, ready, start, successfulChanges, rejectedCodes));
+      Future<?> secondChange =
+          executor.submit(
+              () ->
+                  changeAdministrator(
+                      second, first, ready, start, successfulChanges, rejectedCodes));
+      ready.await();
+      start.countDown();
+      firstChange.get();
+      secondChange.get();
+    }
+
+    assertThat(successfulChanges).hasValue(1);
+    assertThat(rejectedCodes).containsExactly("LAST_ACTIVE_ADMIN_REQUIRED");
+    assertThat(users.countByRoleAndStatus(User.Role.ADMIN, User.Status.ACTIVE)).isEqualTo(1);
+  }
+
+  private void changeAdministrator(
+      User actor,
+      User target,
+      CountDownLatch ready,
+      CountDownLatch start,
+      AtomicInteger successfulChanges,
+      Queue<String> rejectedCodes) {
+    ready.countDown();
+    try {
+      start.await();
+      adminService.update(
+          target.getId(),
+          new AdminController.UpdateUserRequest(User.Role.ORGANIZER, User.Status.ACTIVE),
+          actor);
+      successfulChanges.incrementAndGet();
+    } catch (ApiException exception) {
+      rejectedCodes.add(exception.code());
+    } catch (InterruptedException exception) {
+      Thread.currentThread().interrupt();
+      throw new IllegalStateException(exception);
+    }
   }
 
   @Test

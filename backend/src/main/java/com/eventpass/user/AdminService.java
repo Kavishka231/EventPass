@@ -35,7 +35,15 @@ public class AdminService {
   }
 
   @Transactional
-  public AdminController.UserResponse update(UUID id, AdminController.UpdateUserRequest request) {
+  public AdminController.UserResponse update(
+      UUID id, AdminController.UpdateUserRequest request, User actor) {
+    if (id.equals(actor.getId())
+        && (request.role() != User.Role.ADMIN || request.status() != User.Status.ACTIVE)) {
+      throw new ApiException(
+          HttpStatus.CONFLICT,
+          "ADMIN_SELF_LIFECYCLE_CHANGE",
+          "Administrators cannot demote or suspend their own account.");
+    }
     User user =
         users
             .findById(id)
@@ -43,6 +51,19 @@ public class AdminService {
                 () ->
                     new ApiException(
                         HttpStatus.NOT_FOUND, "USER_NOT_FOUND", "User was not found."));
+    boolean removesActiveAdministrator =
+        user.getRole() == User.Role.ADMIN
+            && user.getStatus() == User.Status.ACTIVE
+            && (request.role() != User.Role.ADMIN || request.status() != User.Status.ACTIVE);
+    if (removesActiveAdministrator) {
+      users.acquireAdministratorLifecycleLock();
+      if (users.countByRoleAndStatus(User.Role.ADMIN, User.Status.ACTIVE) <= 1) {
+        throw new ApiException(
+            HttpStatus.CONFLICT,
+            "LAST_ACTIVE_ADMIN_REQUIRED",
+            "The last active administrator cannot be demoted or suspended.");
+      }
+    }
     user.setRole(request.role());
     user.setStatus(request.status());
     return response(user);

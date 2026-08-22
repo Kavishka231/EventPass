@@ -28,18 +28,24 @@ public class AuthController {
       String accessToken, String refreshToken, String tokenType, String role) {}
 
   @PostMapping("/register")
-  ResponseEntity<AuthResponse> register(@Valid @RequestBody RegisterRequest r) {
-    return ResponseEntity.status(HttpStatus.CREATED).body(service.register(r));
+  ResponseEntity<AuthResponse> register(
+      @Valid @RequestBody RegisterRequest r,
+      @RequestHeader(value = "User-Agent", required = false) String deviceInfo) {
+    return ResponseEntity.status(HttpStatus.CREATED).body(service.register(r, deviceInfo));
   }
 
   @PostMapping("/login")
-  AuthResponse login(@Valid @RequestBody LoginRequest r) {
-    return service.login(r);
+  AuthResponse login(
+      @Valid @RequestBody LoginRequest r,
+      @RequestHeader(value = "User-Agent", required = false) String deviceInfo) {
+    return service.login(r, deviceInfo);
   }
 
   @PostMapping("/refresh")
-  AuthResponse refresh(@Valid @RequestBody TokenRequest r) {
-    return service.refresh(r.refreshToken());
+  AuthResponse refresh(
+      @Valid @RequestBody TokenRequest r,
+      @RequestHeader(value = "User-Agent", required = false) String deviceInfo) {
+    return service.refresh(r.refreshToken(), deviceInfo);
   }
 
   @PostMapping("/logout")

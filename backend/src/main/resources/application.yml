@@ -49,6 +49,9 @@ eventpass:
     secret: ${JWT_SECRET:local-development-secret-change-before-production}
     access-ttl: PT15M
     refresh-ttl: P30D
+    issuer: ${JWT_ISSUER:eventpass}
+    audience: ${JWT_AUDIENCE:eventpass-api}
+    signing-key-id: ${JWT_SIGNING_KEY_ID:eventpass-primary}
   booking.hold-ttl: PT5M
   bootstrap-admin:
     email: ${BOOTSTRAP_ADMIN_EMAIL:}

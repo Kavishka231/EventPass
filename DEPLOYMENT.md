@@ -2,7 +2,7 @@
 
 The backend multi-stage Dockerfile at `backend/Dockerfile` builds on JDK 21 and runs on a non-root JRE 21 Alpine user with a liveness health check. Root-level `compose.yml` provides PostgreSQL, Redis, Apache Kafka, and an optional application profile using `backend/` as its build context.
 
-Set `DATABASE_URL`, `DATABASE_USERNAME`, `DATABASE_PASSWORD`, `REDIS_HOST`, `REDIS_PORT`, `KAFKA_BOOTSTRAP_SERVERS`, and a strong `JWT_SECRET`. Readiness includes dependency indicators; liveness uses only application process state. Persist PostgreSQL independently and terminate TLS at the ingress/load balancer.
+Set `DATABASE_URL`, `DATABASE_USERNAME`, `DATABASE_PASSWORD`, `REDIS_HOST`, `REDIS_PORT`, `KAFKA_BOOTSTRAP_SERVERS`, and a cryptographically random `JWT_SECRET` of at least 32 bytes. Set stable deployment-specific `JWT_ISSUER`, `JWT_AUDIENCE`, and `JWT_SIGNING_KEY_ID` values; changing any of them invalidates existing access tokens. Readiness includes dependency indicators; liveness uses only application process state. Persist PostgreSQL independently and terminate TLS at the ingress/load balancer.
 
 The application provisions its domain and dead-letter topics by default. Production defaults to three replicas; ensure the Kafka cluster has at least three brokers, or deliberately set `KAFKA_TOPIC_REPLICATION_FACTOR` for a smaller environment. Tune `KAFKA_TOPIC_PARTITIONS`, `KAFKA_TOPIC_RETENTION_MS`, `KAFKA_DLT_RETENTION_MS`, `KAFKA_CONSUMER_GROUP`, and `KAFKA_CONSUMER_CONCURRENCY` for workload and recovery requirements. Automatic broker topic creation is disabled so missing or invalid production topology fails startup visibly.
 
