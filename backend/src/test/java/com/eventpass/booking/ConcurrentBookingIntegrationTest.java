@@ -185,6 +185,8 @@ class ConcurrentBookingIntegrationTest {
   void sameIdempotencyKeyAndRequestReturnsTheOriginalBooking() {
     BookingFixture fixture = fixture();
     long bookingsBefore = bookings.count();
+    long paymentsBefore = payments.count();
+    long ticketsBefore = tickets.count();
     BookingController.CreateBookingRequest request = fixture.request();
 
     BookingController.BookingResponse first =
@@ -195,6 +197,22 @@ class ConcurrentBookingIntegrationTest {
     assertThat(replay.id()).isEqualTo(first.id());
     assertThat(replay.reference()).isEqualTo(first.reference());
     assertThat(bookings.count()).isEqualTo(bookingsBefore + 1);
+    assertThat(payments.count()).isEqualTo(paymentsBefore + 1);
+    assertThat(tickets.count()).isEqualTo(ticketsBefore + 1);
+    assertThat(bookings.findById(first.id()).orElseThrow().getStatus())
+        .isEqualTo(Booking.Status.CONFIRMED);
+    assertThat(payments.findByBookingId(first.id()).orElseThrow().getStatus())
+        .isEqualTo(Payment.Status.SUCCESS);
+    assertThat(inventory.findById(fixture.eventSeat().getId()).orElseThrow().getStatus())
+        .isEqualTo(EventSeat.Status.SOLD);
+    assertThat(tickets.findAllByBookingId(first.id()))
+        .singleElement()
+        .satisfies(
+            ticket -> {
+              assertThat(ticket.getStatus()).isEqualTo(com.eventpass.ticket.Ticket.Status.ACTIVE);
+              assertThat(ticket.getTicketNumber()).isNotBlank();
+              assertThat(ticket.getQrToken()).hasSizeGreaterThanOrEqualTo(32);
+            });
   }
 
   @Test
@@ -309,6 +327,43 @@ class ConcurrentBookingIntegrationTest {
   }
 
   @Test
+  void expiredPendingBookingReleasesInventoryAndRecordsAnEvent() {
+    BookingFixture fixture = fixture();
+    Booking pending = new Booking();
+    pending.setBookingReference("EXP-" + UUID.randomUUID());
+    pending.setUser(fixture.customer());
+    pending.setEvent(fixture.event());
+    pending.setStatus(Booking.Status.PENDING);
+    pending.setTotalAmount(new BigDecimal("100.00"));
+    pending.setCurrency("LKR");
+    pending.setExpiresAt(Instant.now().minusSeconds(1));
+    pending.setIdempotencyKey("expiration-" + UUID.randomUUID());
+    pending.setIdempotencyOperation("BOOKING_CREATE");
+    pending.setIdempotencyRequestHash("e".repeat(64));
+    BookingItem item = new BookingItem();
+    item.setBooking(pending);
+    item.setEventSeat(fixture.eventSeat());
+    item.setUnitPrice(new BigDecimal("100.00"));
+    pending.getItems().add(item);
+    fixture.eventSeat().setStatus(EventSeat.Status.HELD);
+    inventory.saveAndFlush(fixture.eventSeat());
+    bookings.saveAndFlush(pending);
+
+    assertThat(service.expirePendingBookings()).isEqualTo(1);
+
+    assertThat(bookings.findById(pending.getId()).orElseThrow().getStatus())
+        .isEqualTo(Booking.Status.EXPIRED);
+    assertThat(inventory.findById(fixture.eventSeat().getId()).orElseThrow().getStatus())
+        .isEqualTo(EventSeat.Status.AVAILABLE);
+    assertThat(outboxEvents.findAll())
+        .anySatisfy(
+            event -> {
+              assertThat(event.getAggregateId()).isEqualTo(pending.getId());
+              assertThat(event.getEventType()).isEqualTo("BOOKING_EXPIRED");
+            });
+  }
+
+  @Test
   void unknownProviderOutcomeIsFlaggedForReconciliationAndKeepsSeatHeld() {
     BookingFixture fixture = fixture();
     String key = "payment-unknown-" + UUID.randomUUID();
@@ -370,6 +425,34 @@ class ConcurrentBookingIntegrationTest {
         .isEqualTo(EventSeat.Status.AVAILABLE);
     assertThat(tickets.findAllByBookingId(booking.getId()))
         .allMatch(ticket -> ticket.getStatus() == com.eventpass.ticket.Ticket.Status.CANCELLED);
+  }
+
+  @Test
+  void cancelledBookingSeatCanBeResoldWithANewActiveTicket() {
+    BookingFixture fixture = cancellableFixture();
+    BookingController.BookingResponse first =
+        service.create(fixture.request(), "resale-first-" + UUID.randomUUID(), fixture.customer());
+    service.cancel(first.id(), fixture.customer());
+    User replacementCustomer =
+        user("resale-customer-" + UUID.randomUUID() + "@example.com", User.Role.CUSTOMER);
+
+    BookingController.BookingResponse resale =
+        service.create(
+            fixture.request(), "resale-second-" + UUID.randomUUID(), replacementCustomer);
+
+    assertThat(bookings.findById(first.id()).orElseThrow().getStatus())
+        .isEqualTo(Booking.Status.CANCELLED);
+    assertThat(resale.status()).isEqualTo(Booking.Status.CONFIRMED);
+    assertThat(inventory.findById(fixture.eventSeat().getId()).orElseThrow().getStatus())
+        .isEqualTo(EventSeat.Status.SOLD);
+    assertThat(tickets.findAllByBookingId(first.id()))
+        .singleElement()
+        .extracting(com.eventpass.ticket.Ticket::getStatus)
+        .isEqualTo(com.eventpass.ticket.Ticket.Status.CANCELLED);
+    assertThat(tickets.findAllByBookingId(resale.id()))
+        .singleElement()
+        .extracting(com.eventpass.ticket.Ticket::getStatus)
+        .isEqualTo(com.eventpass.ticket.Ticket.Status.ACTIVE);
   }
 
   @Test
