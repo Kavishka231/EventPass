@@ -14,6 +14,7 @@ The backend now includes:
 - bounded, sortable pagination for event, booking, ticket, administrator-user, and notification collections;
 - projection-based booking and ticket history queries with bulk seat lookup and matching PostgreSQL indexes, avoiding page-size-dependent lazy-loading queries;
 - HTTP contract integration coverage for booking response bodies and statuses, validation, authorization, bounded pagination, and standardized errors;
+- authentication API integration coverage for registration, duplicate email handling, login, inactive accounts, refresh rotation, logout, and token replay;
 - Java 21 formatting/build CI and PostgreSQL/Redis Testcontainers coverage for authorization, suspended/invalid sessions, seat contention, financial/admin races, competing outbox publishers, duplicate event delivery, and the full active-event cancellation chain.
 
 ## Repository structure
