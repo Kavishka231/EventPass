@@ -1,0 +1,7 @@
+[
+  {"email": "loadtest-customer-001@example.invalid", "password": "replace-with-existing-customer-password"},
+  {"email": "loadtest-customer-002@example.invalid", "password": "replace-with-existing-customer-password"},
+  {"email": "loadtest-customer-003@example.invalid", "password": "replace-with-existing-customer-password"},
+  {"email": "loadtest-customer-004@example.invalid", "password": "replace-with-existing-customer-password"},
+  {"email": "loadtest-customer-005@example.invalid", "password": "replace-with-existing-customer-password"}
+]

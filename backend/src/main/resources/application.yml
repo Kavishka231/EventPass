@@ -10,6 +10,9 @@ spring:
   data.redis:
     host: ${REDIS_HOST:localhost}
     port: ${REDIS_PORT:6379}
+    connect-timeout: ${REDIS_CONNECT_TIMEOUT:PT2S}
+    timeout: ${REDIS_COMMAND_TIMEOUT:PT1S}
+    lettuce.shutdown-timeout: ${REDIS_SHUTDOWN_TIMEOUT:PT2S}
   data.web.pageable:
     default-page-size: 20
     max-page-size: 100
@@ -30,6 +33,16 @@ spring:
       retries: 2147483647
       properties:
         enable.idempotence: true
+        delivery.timeout.ms: ${KAFKA_DELIVERY_TIMEOUT_MS:30000}
+        request.timeout.ms: ${KAFKA_REQUEST_TIMEOUT_MS:10000}
+        retry.backoff.ms: ${KAFKA_RETRY_BACKOFF_MS:250}
+        retry.backoff.max.ms: ${KAFKA_RETRY_BACKOFF_MAX_MS:5000}
+        max.in.flight.requests.per.connection: 5
+    properties:
+      reconnect.backoff.ms: ${KAFKA_RECONNECT_BACKOFF_MS:250}
+      reconnect.backoff.max.ms: ${KAFKA_RECONNECT_BACKOFF_MAX_MS:10000}
+      socket.connection.setup.timeout.ms: ${KAFKA_CONNECTION_SETUP_TIMEOUT_MS:10000}
+      socket.connection.setup.timeout.max.ms: ${KAFKA_CONNECTION_SETUP_TIMEOUT_MAX_MS:30000}
     listener:
       ack-mode: record
       missing-topics-fatal: false

@@ -6,3 +6,9 @@ target/
 *.log
 .DS_Store
 hs_err_pid*
+backups/
+*.dump
+*.dump.sha256
+*.dump.metadata
+performance/k6/customers.json
+performance-results/

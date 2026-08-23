@@ -5,6 +5,8 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.eventpass.common.metrics.BusinessMetrics;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -25,7 +27,9 @@ class OutboxPublisherTest {
     when(kafka.send(event.getTopic(), event.getAggregateId().toString(), event.getPayload()))
         .thenReturn(CompletableFuture.failedFuture(new IllegalStateException("Kafka unavailable")))
         .thenReturn(CompletableFuture.completedFuture(null));
-    OutboxPublisher publisher = new OutboxPublisher(repository, kafka);
+    SimpleMeterRegistry meters = new SimpleMeterRegistry();
+    OutboxPublisher publisher =
+        new OutboxPublisher(repository, kafka, new BusinessMetrics(meters, repository));
 
     publisher.publish();
 
@@ -41,6 +45,7 @@ class OutboxPublisherTest {
     assertThat(event.getLastError()).isNull();
     verify(kafka, org.mockito.Mockito.times(2))
         .send(event.getTopic(), event.getAggregateId().toString(), event.getPayload());
+    assertThat(meters.get("eventpass.kafka.publish.failures").counter().count()).isEqualTo(1);
   }
 
   private OutboxEvent pendingEvent() {

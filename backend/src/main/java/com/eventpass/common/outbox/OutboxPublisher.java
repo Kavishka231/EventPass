@@ -1,5 +1,6 @@
 package com.eventpass.common.outbox;
 
+import com.eventpass.common.metrics.BusinessMetrics;
 import java.time.Instant;
 import java.util.concurrent.TimeUnit;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -19,10 +20,13 @@ public class OutboxPublisher {
   private static final long MAXIMUM_BACKOFF_SECONDS = 900;
   private final OutboxEventRepository events;
   private final KafkaTemplate<String, String> kafka;
+  private final BusinessMetrics metrics;
 
-  public OutboxPublisher(OutboxEventRepository events, KafkaTemplate<String, String> kafka) {
+  public OutboxPublisher(
+      OutboxEventRepository events, KafkaTemplate<String, String> kafka, BusinessMetrics metrics) {
     this.events = events;
     this.kafka = kafka;
+    this.metrics = metrics;
   }
 
   @Scheduled(fixedDelayString = "${eventpass.outbox.publish-delay:PT2S}")
@@ -35,6 +39,7 @@ public class OutboxPublisher {
             .get(5, TimeUnit.SECONDS);
         event.markPublished(Instant.now());
       } catch (Exception exception) {
+        metrics.kafkaPublishFailed();
         String message = exception.getMessage();
         String error =
             message == null

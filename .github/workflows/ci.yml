@@ -14,6 +14,11 @@ jobs:
           java-version: 21
           cache: maven
           cache-dependency-path: backend/pom.xml
+      - name: Validate operations scripts
+        run: |
+          for script in ops/postgres/*.sh; do
+            sh -n "$script"
+          done
       - name: Verify backend
         working-directory: backend
         run: mvn -B spotless:check verify
