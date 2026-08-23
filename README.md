@@ -13,6 +13,7 @@ The backend now includes:
 - a uniform API error contract, explicit CORS and security headers, request/correlation IDs, production JSON logs, Redis rate limits, permissioned Prometheus business metrics, and PostgreSQL/Redis/Kafka readiness indicators;
 - bounded, sortable pagination for event, booking, ticket, administrator-user, and notification collections;
 - projection-based booking and ticket history queries with bulk seat lookup and matching PostgreSQL indexes, avoiding page-size-dependent lazy-loading queries;
+- HTTP contract integration coverage for booking response bodies and statuses, validation, authorization, bounded pagination, and standardized errors;
 - Java 21 formatting/build CI and PostgreSQL/Redis Testcontainers coverage for authorization, suspended/invalid sessions, seat contention, financial/admin races, competing outbox publishers, duplicate event delivery, and the full active-event cancellation chain.
 
 ## Repository structure

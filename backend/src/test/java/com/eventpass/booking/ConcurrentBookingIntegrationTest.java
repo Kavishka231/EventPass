@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -808,6 +809,8 @@ class ConcurrentBookingIntegrationTest {
                 .header("Authorization", token))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.content.length()").value(1))
+        .andExpect(jsonPath("$.content[0].id").isString())
+        .andExpect(jsonPath("$.content[0].status").value("CONFIRMED"))
         .andExpect(jsonPath("$.number").value(0))
         .andExpect(jsonPath("$.size").value(1))
         .andExpect(jsonPath("$.totalElements").value(2));
@@ -820,9 +823,101 @@ class ConcurrentBookingIntegrationTest {
                 .header("Authorization", token))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.content.length()").value(1))
+        .andExpect(jsonPath("$.content[0].bookingId").isString())
+        .andExpect(jsonPath("$.content[0].status").value("ACTIVE"))
         .andExpect(jsonPath("$.number").value(0))
         .andExpect(jsonPath("$.size").value(1))
         .andExpect(jsonPath("$.totalElements").value(2));
+
+    mockMvc
+        .perform(get("/api/v1/bookings").param("size", "1000").header("Authorization", token))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.size").value(100));
+  }
+
+  @Test
+  void bookingHttpContractCoversSuccessAndValidation() throws Exception {
+    BookingFixture fixture = fixture();
+    String token = bearer(fixture.customer());
+
+    mockMvc
+        .perform(
+            post("/api/v1/bookings")
+                .header("Authorization", token)
+                .header("Idempotency-Key", "http-success-" + UUID.randomUUID())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(bookingJson(fixture, "tok_success")))
+        .andExpect(status().isCreated())
+        .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+        .andExpect(jsonPath("$.id").isString())
+        .andExpect(jsonPath("$.reference").isString())
+        .andExpect(jsonPath("$.eventId").value(fixture.event().getId().toString()))
+        .andExpect(jsonPath("$.status").value("CONFIRMED"))
+        .andExpect(jsonPath("$.totalAmount").value(100.00))
+        .andExpect(jsonPath("$.currency").value("LKR"))
+        .andExpect(jsonPath("$.eventSeatIds[0]").value(fixture.eventSeat().getId().toString()))
+        .andExpect(jsonPath("$.createdAt").exists());
+
+    mockMvc
+        .perform(
+            post("/api/v1/bookings")
+                .header("Authorization", token)
+                .header("Idempotency-Key", "http-validation-" + UUID.randomUUID())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {"eventId":"%s","eventSeatIds":[],"paymentToken":""}
+                    """
+                        .formatted(fixture.event().getId())))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.status").value(400))
+        .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+        .andExpect(jsonPath("$.message").isString())
+        .andExpect(jsonPath("$.path").value("/api/v1/bookings"))
+        .andExpect(jsonPath("$.requestId").isString())
+        .andExpect(jsonPath("$.timestamp").exists());
+  }
+
+  @Test
+  void bookingHttpContractCoversAuthorizationAndConflictErrors() throws Exception {
+    mockMvc
+        .perform(get("/api/v1/bookings"))
+        .andExpect(status().isUnauthorized())
+        .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+        .andExpect(jsonPath("$.status").value(401))
+        .andExpect(jsonPath("$.code").value("UNAUTHORIZED"))
+        .andExpect(jsonPath("$.message").isString())
+        .andExpect(jsonPath("$.path").value("/api/v1/bookings"))
+        .andExpect(jsonPath("$.requestId").isString())
+        .andExpect(jsonPath("$.timestamp").exists());
+
+    BookingFixture first = fixture();
+    BookingFixture changed = fixture();
+    String token = bearer(first.customer());
+    String key = "http-conflict-" + UUID.randomUUID();
+    mockMvc
+        .perform(
+            post("/api/v1/bookings")
+                .header("Authorization", token)
+                .header("Idempotency-Key", key)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(bookingJson(first, "tok_success")))
+        .andExpect(status().isCreated());
+
+    mockMvc
+        .perform(
+            post("/api/v1/bookings")
+                .header("Authorization", token)
+                .header("Idempotency-Key", key)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(bookingJson(changed, "tok_success")))
+        .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.status").value(409))
+        .andExpect(jsonPath("$.code").value("IDEMPOTENCY_PAYLOAD_MISMATCH"))
+        .andExpect(jsonPath("$.message").isString())
+        .andExpect(jsonPath("$.path").value("/api/v1/bookings"))
+        .andExpect(jsonPath("$.requestId").isString())
+        .andExpect(jsonPath("$.timestamp").exists());
   }
 
   @Test
@@ -1012,6 +1107,13 @@ class ConcurrentBookingIntegrationTest {
     eventSeat.setPrice(new BigDecimal("100.00"));
     inventory.save(eventSeat);
     return new BookingFixture(event, eventSeat, customer);
+  }
+
+  private String bookingJson(BookingFixture fixture, String paymentToken) {
+    return """
+        {"eventId":"%s","eventSeatIds":["%s"],"paymentToken":"%s"}
+        """
+        .formatted(fixture.event().getId(), fixture.eventSeat().getId(), paymentToken);
   }
 
   private List<UUID> claimPendingOutboxIds() {
