@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -30,6 +31,8 @@ import com.eventpass.ticket.TicketRepository;
 import com.eventpass.ticket.TicketService;
 import com.eventpass.user.*;
 import com.eventpass.venue.*;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.EntityManagerFactory;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -43,6 +46,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.MediaType;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -101,6 +105,8 @@ class ConcurrentBookingIntegrationTest {
   @Autowired JwtService jwtService;
   @Autowired AuthService authService;
   @Autowired EntityManagerFactory entityManagerFactory;
+  @Autowired ObjectMapper objectMapper;
+  @Autowired PasswordEncoder passwordEncoder;
 
   @Test
   void exactlyOneOfTwentyCustomersCanBuyTheSameSeat() throws Exception {
@@ -179,6 +185,8 @@ class ConcurrentBookingIntegrationTest {
   void sameIdempotencyKeyAndRequestReturnsTheOriginalBooking() {
     BookingFixture fixture = fixture();
     long bookingsBefore = bookings.count();
+    long paymentsBefore = payments.count();
+    long ticketsBefore = tickets.count();
     BookingController.CreateBookingRequest request = fixture.request();
 
     BookingController.BookingResponse first =
@@ -189,6 +197,22 @@ class ConcurrentBookingIntegrationTest {
     assertThat(replay.id()).isEqualTo(first.id());
     assertThat(replay.reference()).isEqualTo(first.reference());
     assertThat(bookings.count()).isEqualTo(bookingsBefore + 1);
+    assertThat(payments.count()).isEqualTo(paymentsBefore + 1);
+    assertThat(tickets.count()).isEqualTo(ticketsBefore + 1);
+    assertThat(bookings.findById(first.id()).orElseThrow().getStatus())
+        .isEqualTo(Booking.Status.CONFIRMED);
+    assertThat(payments.findByBookingId(first.id()).orElseThrow().getStatus())
+        .isEqualTo(Payment.Status.SUCCESS);
+    assertThat(inventory.findById(fixture.eventSeat().getId()).orElseThrow().getStatus())
+        .isEqualTo(EventSeat.Status.SOLD);
+    assertThat(tickets.findAllByBookingId(first.id()))
+        .singleElement()
+        .satisfies(
+            ticket -> {
+              assertThat(ticket.getStatus()).isEqualTo(com.eventpass.ticket.Ticket.Status.ACTIVE);
+              assertThat(ticket.getTicketNumber()).isNotBlank();
+              assertThat(ticket.getQrToken()).hasSizeGreaterThanOrEqualTo(32);
+            });
   }
 
   @Test
@@ -303,6 +327,43 @@ class ConcurrentBookingIntegrationTest {
   }
 
   @Test
+  void expiredPendingBookingReleasesInventoryAndRecordsAnEvent() {
+    BookingFixture fixture = fixture();
+    Booking pending = new Booking();
+    pending.setBookingReference("EXP-" + UUID.randomUUID());
+    pending.setUser(fixture.customer());
+    pending.setEvent(fixture.event());
+    pending.setStatus(Booking.Status.PENDING);
+    pending.setTotalAmount(new BigDecimal("100.00"));
+    pending.setCurrency("LKR");
+    pending.setExpiresAt(Instant.now().minusSeconds(1));
+    pending.setIdempotencyKey("expiration-" + UUID.randomUUID());
+    pending.setIdempotencyOperation("BOOKING_CREATE");
+    pending.setIdempotencyRequestHash("e".repeat(64));
+    BookingItem item = new BookingItem();
+    item.setBooking(pending);
+    item.setEventSeat(fixture.eventSeat());
+    item.setUnitPrice(new BigDecimal("100.00"));
+    pending.getItems().add(item);
+    fixture.eventSeat().setStatus(EventSeat.Status.HELD);
+    inventory.saveAndFlush(fixture.eventSeat());
+    bookings.saveAndFlush(pending);
+
+    assertThat(service.expirePendingBookings()).isEqualTo(1);
+
+    assertThat(bookings.findById(pending.getId()).orElseThrow().getStatus())
+        .isEqualTo(Booking.Status.EXPIRED);
+    assertThat(inventory.findById(fixture.eventSeat().getId()).orElseThrow().getStatus())
+        .isEqualTo(EventSeat.Status.AVAILABLE);
+    assertThat(outboxEvents.findAll())
+        .anySatisfy(
+            event -> {
+              assertThat(event.getAggregateId()).isEqualTo(pending.getId());
+              assertThat(event.getEventType()).isEqualTo("BOOKING_EXPIRED");
+            });
+  }
+
+  @Test
   void unknownProviderOutcomeIsFlaggedForReconciliationAndKeepsSeatHeld() {
     BookingFixture fixture = fixture();
     String key = "payment-unknown-" + UUID.randomUUID();
@@ -364,6 +425,34 @@ class ConcurrentBookingIntegrationTest {
         .isEqualTo(EventSeat.Status.AVAILABLE);
     assertThat(tickets.findAllByBookingId(booking.getId()))
         .allMatch(ticket -> ticket.getStatus() == com.eventpass.ticket.Ticket.Status.CANCELLED);
+  }
+
+  @Test
+  void cancelledBookingSeatCanBeResoldWithANewActiveTicket() {
+    BookingFixture fixture = cancellableFixture();
+    BookingController.BookingResponse first =
+        service.create(fixture.request(), "resale-first-" + UUID.randomUUID(), fixture.customer());
+    service.cancel(first.id(), fixture.customer());
+    User replacementCustomer =
+        user("resale-customer-" + UUID.randomUUID() + "@example.com", User.Role.CUSTOMER);
+
+    BookingController.BookingResponse resale =
+        service.create(
+            fixture.request(), "resale-second-" + UUID.randomUUID(), replacementCustomer);
+
+    assertThat(bookings.findById(first.id()).orElseThrow().getStatus())
+        .isEqualTo(Booking.Status.CANCELLED);
+    assertThat(resale.status()).isEqualTo(Booking.Status.CONFIRMED);
+    assertThat(inventory.findById(fixture.eventSeat().getId()).orElseThrow().getStatus())
+        .isEqualTo(EventSeat.Status.SOLD);
+    assertThat(tickets.findAllByBookingId(first.id()))
+        .singleElement()
+        .extracting(com.eventpass.ticket.Ticket::getStatus)
+        .isEqualTo(com.eventpass.ticket.Ticket.Status.CANCELLED);
+    assertThat(tickets.findAllByBookingId(resale.id()))
+        .singleElement()
+        .extracting(com.eventpass.ticket.Ticket::getStatus)
+        .isEqualTo(com.eventpass.ticket.Ticket.Status.ACTIVE);
   }
 
   @Test
@@ -942,6 +1031,406 @@ class ConcurrentBookingIntegrationTest {
   }
 
   @Test
+  void administratorCanCreateVenueSeatsAndCapacityIsEnforced() throws Exception {
+    User administrator =
+        user("inventory-admin-" + UUID.randomUUID() + "@example.com", User.Role.ADMIN);
+    try {
+      String venueBody =
+          mockMvc
+              .perform(
+                  post("/api/v1/venues")
+                      .header("Authorization", bearer(administrator))
+                      .contentType(MediaType.APPLICATION_JSON)
+                      .content(
+                          """
+                          {"name":"Contract Arena","address":"10 Test Road","city":"Colombo","capacity":2}
+                          """))
+              .andExpect(status().isCreated())
+              .andExpect(jsonPath("$.id").isString())
+              .andExpect(jsonPath("$.name").value("Contract Arena"))
+              .andExpect(jsonPath("$.capacity").value(2))
+              .andReturn()
+              .getResponse()
+              .getContentAsString();
+      UUID venueId = UUID.fromString(objectMapper.readTree(venueBody).path("id").asText());
+
+      mockMvc
+          .perform(
+              post("/api/v1/venues/{venueId}/seats", venueId)
+                  .header("Authorization", bearer(administrator))
+                  .contentType(MediaType.APPLICATION_JSON)
+                  .content(
+                      """
+                      [
+                        {"section":"A","row":"1","number":"1","type":"REGULAR"},
+                        {"section":"A","row":"1","number":"2","type":"VIP"}
+                      ]
+                      """))
+          .andExpect(status().isCreated())
+          .andExpect(jsonPath("$.length()").value(2))
+          .andExpect(jsonPath("$[0].venueId").value(venueId.toString()))
+          .andExpect(jsonPath("$[0].type").value("REGULAR"))
+          .andExpect(jsonPath("$[1].type").value("VIP"));
+
+      mockMvc
+          .perform(
+              post("/api/v1/venues/{venueId}/seats", venueId)
+                  .header("Authorization", bearer(administrator))
+                  .contentType(MediaType.APPLICATION_JSON)
+                  .content(
+                      """
+                      [{"section":"B","row":"1","number":"3","type":"PREMIUM"}]
+                      """))
+          .andExpect(status().isConflict())
+          .andExpect(jsonPath("$.code").value("VENUE_CAPACITY_EXCEEDED"));
+      assertThat(seats.countByVenueId(venueId)).isEqualTo(2);
+    } finally {
+      administrator.setStatus(User.Status.DISABLED);
+      users.saveAndFlush(administrator);
+    }
+  }
+
+  @Test
+  void eventInventoryRequiresOwnershipBeforePricingBlockingAndPublication() throws Exception {
+    DraftEventFixture fixture = draftEventFixture();
+    User otherOrganizer =
+        user("inventory-other-" + UUID.randomUUID() + "@example.com", User.Role.ORGANIZER);
+    String inventoryJson =
+        """
+        [
+          {"seatId":"%s","price":125.50,"blocked":false},
+          {"seatId":"%s","price":200.00,"blocked":true}
+        ]
+        """
+            .formatted(fixture.firstSeat().getId(), fixture.secondSeat().getId());
+
+    mockMvc
+        .perform(
+            put("/api/v1/events/{eventId}/inventory", fixture.event().getId())
+                .header("Authorization", bearer(otherOrganizer))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(inventoryJson))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.code").value("EVENT_FORBIDDEN"));
+
+    mockMvc
+        .perform(
+            put("/api/v1/events/{eventId}", fixture.event().getId())
+                .header("Authorization", bearer(fixture.organizer()))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(eventJson(fixture.event(), Event.Status.PUBLISHED)))
+        .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.code").value("EVENT_INVENTORY_REQUIRED"));
+
+    String configuredBody =
+        mockMvc
+            .perform(
+                put("/api/v1/events/{eventId}/inventory", fixture.event().getId())
+                    .header("Authorization", bearer(fixture.organizer()))
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(inventoryJson))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.length()").value(2))
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+    JsonNode configured = objectMapper.readTree(configuredBody);
+    List<JsonNode> configuredSeats = new ArrayList<>();
+    configured.forEach(configuredSeats::add);
+    assertThat(configuredSeats)
+        .anySatisfy(
+            seat -> {
+              assertThat(seat.path("price").decimalValue()).isEqualByComparingTo("125.50");
+              assertThat(seat.path("availability").asText()).isEqualTo("AVAILABLE");
+            });
+    assertThat(configuredSeats)
+        .anySatisfy(
+            seat -> {
+              assertThat(seat.path("price").decimalValue()).isEqualByComparingTo("200.00");
+              assertThat(seat.path("availability").asText()).isEqualTo("BLOCKED");
+            });
+
+    mockMvc
+        .perform(
+            put("/api/v1/events/{eventId}", fixture.event().getId())
+                .header("Authorization", bearer(fixture.organizer()))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(eventJson(fixture.event(), Event.Status.PUBLISHED)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.status").value("PUBLISHED"));
+
+    mockMvc
+        .perform(get("/api/v1/events/{eventId}/seats", fixture.event().getId()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.length()").value(2));
+    assertThat(inventory.findAllByEventId(fixture.event().getId()))
+        .anySatisfy(
+            seat -> {
+              assertThat(seat.getPrice()).isEqualByComparingTo("125.50");
+              assertThat(seat.getStatus()).isEqualTo(EventSeat.Status.AVAILABLE);
+            })
+        .anySatisfy(
+            seat -> {
+              assertThat(seat.getPrice()).isEqualByComparingTo("200.00");
+              assertThat(seat.getStatus()).isEqualTo(EventSeat.Status.BLOCKED);
+            });
+    mockMvc
+        .perform(
+            put("/api/v1/events/{eventId}/inventory", fixture.event().getId())
+                .header("Authorization", bearer(fixture.organizer()))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(inventoryJson))
+        .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.code").value("INVENTORY_LOCKED"));
+  }
+
+  @Test
+  void customerJourneyRunsFromRegistrationThroughTicketRetrieval() throws Exception {
+    BookingFixture available = fixture();
+    String category = "E2E-" + UUID.randomUUID();
+    available.event().setCategory(category);
+    events.saveAndFlush(available.event());
+    String email = "e2e-customer-" + UUID.randomUUID() + "@example.com";
+    String password = "e2e-customer-password";
+
+    registerThroughHttp(email, password, "End", "ToEnd");
+    String loginBody =
+        mockMvc
+            .perform(
+                post("/api/v1/auth/login")
+                    .with(uniqueAuthClient())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(loginJson(email, password)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.accessToken").isString())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+    String accessToken = objectMapper.readTree(loginBody).path("accessToken").asText();
+    String authorization = "Bearer " + accessToken;
+
+    mockMvc
+        .perform(get("/api/v1/events").param("category", category))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.totalElements").value(1))
+        .andExpect(jsonPath("$.content[0].id").value(available.event().getId().toString()))
+        .andExpect(jsonPath("$.content[0].status").value("PUBLISHED"));
+    mockMvc
+        .perform(get("/api/v1/events/{eventId}/seats", available.event().getId()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.length()").value(1))
+        .andExpect(jsonPath("$[0].id").value(available.eventSeat().getId().toString()))
+        .andExpect(jsonPath("$[0].availability").value("AVAILABLE"))
+        .andExpect(jsonPath("$[0].price").value(100.00));
+
+    String bookingBody =
+        mockMvc
+            .perform(
+                post("/api/v1/bookings")
+                    .header("Authorization", authorization)
+                    .header("Idempotency-Key", "e2e-booking-" + UUID.randomUUID())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(bookingJson(available, "tok_success")))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.status").value("CONFIRMED"))
+            .andExpect(jsonPath("$.totalAmount").value(100.00))
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+    UUID bookingId = UUID.fromString(objectMapper.readTree(bookingBody).path("id").asText());
+    assertThat(payments.findByBookingId(bookingId).orElseThrow().getStatus())
+        .isEqualTo(Payment.Status.SUCCESS);
+    assertThat(inventory.findById(available.eventSeat().getId()).orElseThrow().getStatus())
+        .isEqualTo(EventSeat.Status.SOLD);
+
+    mockMvc
+        .perform(get("/api/v1/tickets").header("Authorization", authorization))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.totalElements").value(1))
+        .andExpect(jsonPath("$.content[0].bookingId").value(bookingId.toString()))
+        .andExpect(
+            jsonPath("$.content[0].eventSeatId").value(available.eventSeat().getId().toString()))
+        .andExpect(jsonPath("$.content[0].status").value("ACTIVE"))
+        .andExpect(jsonPath("$.content[0].ticketNumber").isString())
+        .andExpect(jsonPath("$.content[0].qrToken").isString());
+  }
+
+  @Test
+  void customerCanRegisterThroughTheAuthenticationApi() throws Exception {
+    String email = "REGISTER-" + UUID.randomUUID() + "@Example.com";
+    JsonNode response =
+        registerThroughHttp(email, "registration-password", "  New ", " Customer  ");
+
+    assertThat(response.path("accessToken").asText()).isNotBlank();
+    assertThat(response.path("refreshToken").asText()).isNotBlank();
+    assertThat(response.path("tokenType").asText()).isEqualTo("Bearer");
+    assertThat(response.path("role").asText()).isEqualTo("CUSTOMER");
+    User registered = users.findByEmailIgnoreCase(email).orElseThrow();
+    assertThat(registered.getEmail()).isEqualTo(email.toLowerCase());
+    assertThat(registered.getFirstName()).isEqualTo("New");
+    assertThat(registered.getLastName()).isEqualTo("Customer");
+    assertThat(registered.getRole()).isEqualTo(User.Role.CUSTOMER);
+    assertThat(passwordEncoder.matches("registration-password", registered.getPasswordHash()))
+        .isTrue();
+    assertThat(registered.getPasswordHash()).doesNotContain("registration-password");
+  }
+
+  @Test
+  void duplicateRegistrationReturnsConflict() throws Exception {
+    String email = "duplicate-" + UUID.randomUUID() + "@example.com";
+    registerThroughHttp(email, "duplicate-password", "First", "Customer");
+
+    mockMvc
+        .perform(
+            post("/api/v1/auth/register")
+                .with(uniqueAuthClient())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    registrationJson(email.toUpperCase(), "duplicate-password", "Other", "Name")))
+        .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.status").value(409))
+        .andExpect(jsonPath("$.code").value("EMAIL_EXISTS"))
+        .andExpect(jsonPath("$.path").value("/api/v1/auth/register"));
+  }
+
+  @Test
+  void activeCustomerCanLoginThroughTheAuthenticationApi() throws Exception {
+    String email = "login-" + UUID.randomUUID() + "@example.com";
+    registerThroughHttp(email, "correct-login-password", "Login", "Customer");
+
+    mockMvc
+        .perform(
+            post("/api/v1/auth/login")
+                .with(uniqueAuthClient())
+                .header("User-Agent", "Integration browser")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(loginJson(email.toUpperCase(), "correct-login-password")))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.accessToken").isString())
+        .andExpect(jsonPath("$.refreshToken").isString())
+        .andExpect(jsonPath("$.tokenType").value("Bearer"))
+        .andExpect(jsonPath("$.role").value("CUSTOMER"));
+  }
+
+  @Test
+  void inactiveAccountCannotLoginOrRefresh() throws Exception {
+    String email = "inactive-" + UUID.randomUUID() + "@example.com";
+    JsonNode authentication =
+        registerThroughHttp(email, "inactive-password", "Inactive", "Customer");
+    User customer = users.findByEmailIgnoreCase(email).orElseThrow();
+    customer.setStatus(User.Status.SUSPENDED);
+    users.saveAndFlush(customer);
+
+    mockMvc
+        .perform(
+            post("/api/v1/auth/login")
+                .with(uniqueAuthClient())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(loginJson(email, "inactive-password")))
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.code").value("INVALID_CREDENTIALS"));
+
+    mockMvc
+        .perform(
+            post("/api/v1/auth/refresh")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(tokenJson(authentication.path("refreshToken").asText())))
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.code").value("INVALID_REFRESH_TOKEN"));
+  }
+
+  @Test
+  void refreshRotatesTheTokenThroughTheAuthenticationApi() throws Exception {
+    JsonNode authentication =
+        registerThroughHttp(
+            "rotation-" + UUID.randomUUID() + "@example.com",
+            "rotation-password",
+            "Rotation",
+            "Customer");
+    String originalRefreshToken = authentication.path("refreshToken").asText();
+
+    String body =
+        mockMvc
+            .perform(
+                post("/api/v1/auth/refresh")
+                    .header("User-Agent", "Replacement device")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(tokenJson(originalRefreshToken)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.accessToken").isString())
+            .andExpect(jsonPath("$.refreshToken").isString())
+            .andExpect(jsonPath("$.tokenType").value("Bearer"))
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+    assertThat(objectMapper.readTree(body).path("refreshToken").asText())
+        .isNotEqualTo(originalRefreshToken);
+  }
+
+  @Test
+  void logoutRevokesTheRefreshTokenFamily() throws Exception {
+    JsonNode authentication =
+        registerThroughHttp(
+            "logout-" + UUID.randomUUID() + "@example.com",
+            "logout-password",
+            "Logout",
+            "Customer");
+    String refreshToken = authentication.path("refreshToken").asText();
+
+    mockMvc
+        .perform(
+            post("/api/v1/auth/logout")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(tokenJson(refreshToken)))
+        .andExpect(status().isNoContent())
+        .andExpect(content().string(""));
+    mockMvc
+        .perform(
+            post("/api/v1/auth/refresh")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(tokenJson(refreshToken)))
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.code").value("REFRESH_TOKEN_REUSE_DETECTED"));
+  }
+
+  @Test
+  void replayedRefreshTokenRevokesItsReplacement() throws Exception {
+    JsonNode authentication =
+        registerThroughHttp(
+            "replay-" + UUID.randomUUID() + "@example.com",
+            "replay-password",
+            "Replay",
+            "Customer");
+    String original = authentication.path("refreshToken").asText();
+    String rotationBody =
+        mockMvc
+            .perform(
+                post("/api/v1/auth/refresh")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(tokenJson(original)))
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+    String replacement = objectMapper.readTree(rotationBody).path("refreshToken").asText();
+
+    mockMvc
+        .perform(
+            post("/api/v1/auth/refresh")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(tokenJson(original)))
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.code").value("REFRESH_TOKEN_REUSE_DETECTED"));
+    mockMvc
+        .perform(
+            post("/api/v1/auth/refresh")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(tokenJson(replacement)))
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.code").value("REFRESH_TOKEN_REUSE_DETECTED"));
+  }
+
+  @Test
   void suspendedUserCannotAuthenticateWithPreviouslyIssuedJwt() throws Exception {
     User customer = user("suspended-" + UUID.randomUUID() + "@example.com", User.Role.CUSTOMER);
     String token = bearer(customer);
@@ -1109,11 +1598,115 @@ class ConcurrentBookingIntegrationTest {
     return new BookingFixture(event, eventSeat, customer);
   }
 
+  private DraftEventFixture draftEventFixture() {
+    String suffix = UUID.randomUUID().toString();
+    User organizer = user("draft-organizer-" + suffix + "@example.com", User.Role.ORGANIZER);
+    Venue venue = new Venue();
+    venue.setName("Draft Arena " + suffix);
+    venue.setAddress("20 Test Road");
+    venue.setCity("Colombo");
+    venue.setCapacity(2);
+    venues.save(venue);
+    Seat first = seat(venue, "1", Seat.Type.REGULAR);
+    Seat second = seat(venue, "2", Seat.Type.VIP);
+    Event event = new Event();
+    event.setName("Draft Event " + suffix);
+    event.setDescription("Inventory integration test");
+    event.setCategory("TEST");
+    event.setStartDateTime(Instant.now().plusSeconds(172800));
+    event.setEndDateTime(Instant.now().plusSeconds(176400));
+    event.setVenue(venue);
+    event.setOrganizer(organizer);
+    event.setStatus(Event.Status.DRAFT);
+    events.save(event);
+    return new DraftEventFixture(event, organizer, first, second);
+  }
+
+  private Seat seat(Venue venue, String number, Seat.Type type) {
+    Seat seat = new Seat();
+    seat.setVenue(venue);
+    seat.setSection("A");
+    seat.setRowNumber("1");
+    seat.setSeatNumber(number);
+    seat.setSeatType(type);
+    return seats.save(seat);
+  }
+
+  private String eventJson(Event event, Event.Status status) {
+    return """
+        {
+          "name":"%s",
+          "description":"%s",
+          "category":"%s",
+          "startDateTime":"%s",
+          "endDateTime":"%s",
+          "venueId":"%s",
+          "status":"%s"
+        }
+        """
+        .formatted(
+            event.getName(),
+            event.getDescription(),
+            event.getCategory(),
+            event.getStartDateTime(),
+            event.getEndDateTime(),
+            event.getVenue().getId(),
+            status);
+  }
+
   private String bookingJson(BookingFixture fixture, String paymentToken) {
     return """
         {"eventId":"%s","eventSeatIds":["%s"],"paymentToken":"%s"}
         """
         .formatted(fixture.event().getId(), fixture.eventSeat().getId(), paymentToken);
+  }
+
+  private JsonNode registerThroughHttp(
+      String email, String password, String firstName, String lastName) throws Exception {
+    String body =
+        mockMvc
+            .perform(
+                post("/api/v1/auth/register")
+                    .with(uniqueAuthClient())
+                    .header("User-Agent", "Authentication integration test")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(registrationJson(email, password, firstName, lastName)))
+            .andExpect(status().isCreated())
+            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+    return objectMapper.readTree(body);
+  }
+
+  private String registrationJson(
+      String email, String password, String firstName, String lastName) {
+    return """
+        {"email":"%s","password":"%s","firstName":"%s","lastName":"%s"}
+        """
+        .formatted(email, password, firstName, lastName);
+  }
+
+  private String loginJson(String email, String password) {
+    return """
+        {"email":"%s","password":"%s"}
+        """
+        .formatted(email, password);
+  }
+
+  private String tokenJson(String refreshToken) {
+    return """
+        {"refreshToken":"%s"}
+        """
+        .formatted(refreshToken);
+  }
+
+  private org.springframework.test.web.servlet.request.RequestPostProcessor uniqueAuthClient() {
+    String identity = "auth-test-" + UUID.randomUUID();
+    return request -> {
+      request.setRemoteAddr(identity);
+      return request;
+    };
   }
 
   private List<UUID> claimPendingOutboxIds() {
@@ -1141,6 +1734,8 @@ class ConcurrentBookingIntegrationTest {
           event.getId(), List.of(eventSeat.getId()), paymentToken);
     }
   }
+
+  private record DraftEventFixture(Event event, User organizer, Seat firstSeat, Seat secondSeat) {}
 
   private User user(String email, User.Role role) {
     User u = new User();
