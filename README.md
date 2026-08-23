@@ -19,6 +19,7 @@ The backend now includes:
 - expanded booking lifecycle coverage for success, durable payment failure, expiration, cancellation, seat resale, ticket generation, and idempotency;
 - an end-to-end register/login/event-browse/seat-selection/booking/payment/ticket retrieval test through the public HTTP API;
 - Java 21 formatting/build CI plus dependency-change review, CodeQL analysis, Trivy dependency/configuration/secret and container scanning, downloadable CycloneDX image SBOMs, and weekly Maven/Actions/base-image update checks;
+- production startup enforcement for authenticated TLS Redis/Kafka connections, bounded client timeouts/backoff, and security-aware Kafka readiness checks;
 - PostgreSQL/Redis Testcontainers coverage for authorization, suspended/invalid sessions, seat contention, financial/admin races, competing outbox publishers, duplicate event delivery, and the full active-event cancellation chain.
 
 ## Repository structure

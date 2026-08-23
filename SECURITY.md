@@ -6,7 +6,7 @@ Suspended or disabled accounts cannot log in, refresh, or authenticate an existi
 
 Browser access uses an explicit credentialed CORS origin allowlist; wildcard origins are rejected. Health/liveness/readiness probes are public, while all other Actuator endpoints require an administrator. Authentication and access-denied failures use the standard JSON error envelope without exposing security exceptions. Responses deny framing, cross-origin capabilities, referrer leakage, and undeclared content sources; production enables HSTS and disables Swagger/OpenAPI endpoints.
 
-Production secrets must be injected through environment variables. HTTPS and restrictive CORS should be configured at the deployment ingress for approved origins.
+Production secrets must be injected through environment variables. HTTPS and restrictive CORS should be configured at the deployment ingress for approved origins. The production profile requires authenticated TLS connections to Redis and Kafka: Redis password/ACL credentials and Kafka SASL JAAS credentials must come from the deployment secret store, while certificate trust must be established through the JVM trust store.
 
 ## Automated security checks
 
