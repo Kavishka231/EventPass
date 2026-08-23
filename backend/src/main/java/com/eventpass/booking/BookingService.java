@@ -9,6 +9,8 @@ import com.eventpass.ticket.*;
 import com.eventpass.user.User;
 import java.time.*;
 import java.util.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
@@ -17,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class BookingService {
+  private static final Logger log = LoggerFactory.getLogger(BookingService.class);
   private static final String BOOKING_TOPIC = "booking.events";
   private final BookingRepository bookings;
   private final BookingItemRepository bookingItems;
@@ -73,8 +76,17 @@ public class BookingService {
             "PAYMENT_OUTCOME_UNKNOWN",
             "The payment outcome is being reconciled; do not retry with a new key.");
       }
-      BookingPaymentTransactions.Completion completion =
-          paymentTransactions.complete(prepared.bookingId(), result);
+      BookingPaymentTransactions.Completion completion;
+      try {
+        completion = paymentTransactions.complete(prepared.bookingId(), result);
+      } catch (RuntimeException exception) {
+        metrics.paymentFailed();
+        recordUnknownPayment(prepared.bookingId(), exception);
+        throw new ApiException(
+            HttpStatus.SERVICE_UNAVAILABLE,
+            "PAYMENT_FINALIZATION_UNKNOWN",
+            "The provider returned a payment result, but booking finalization requires reconciliation.");
+      }
       if (!completion.successful()) {
         metrics.bookingFailed();
         metrics.paymentFailed();
@@ -138,7 +150,18 @@ public class BookingService {
           "REFUND_OUTCOME_UNKNOWN",
           "The refund outcome is being reconciled; do not submit another cancellation.");
     }
-    if (!refundTransactions.complete(refund.refundId(), result)) {
+    boolean completed;
+    try {
+      completed = refundTransactions.complete(refund.refundId(), result);
+    } catch (RuntimeException exception) {
+      metrics.refundFailed();
+      recordUnknownRefund(refund.refundId(), exception);
+      throw new ApiException(
+          HttpStatus.SERVICE_UNAVAILABLE,
+          "REFUND_FINALIZATION_UNKNOWN",
+          "The provider returned a refund result, but cancellation finalization requires reconciliation.");
+    }
+    if (!completed) {
       metrics.refundFailed();
       throw new ApiException(
           HttpStatus.SERVICE_UNAVAILABLE,
@@ -151,8 +174,7 @@ public class BookingService {
 
   @Transactional
   public int expirePendingBookings() {
-    List<Booking> expired =
-        bookings.findTop100ByStatusAndExpiresAtBefore(Booking.Status.PENDING, Instant.now());
+    List<Booking> expired = bookings.claimExpiredBatch(Instant.now(), 100);
     List<Booking> safeToExpire =
         expired.stream()
             .filter(
@@ -180,6 +202,30 @@ public class BookingService {
               Map.of("bookingId", booking.getId()));
         });
     return safeToExpire.size();
+  }
+
+  private void recordUnknownPayment(UUID bookingId, RuntimeException finalizationFailure) {
+    try {
+      paymentTransactions.markOutcomeUnknown(bookingId, finalizationFailure);
+    } catch (RuntimeException reconciliationFailure) {
+      finalizationFailure.addSuppressed(reconciliationFailure);
+      log.error(
+          "Payment finalization and reconciliation persistence failed bookingId={}",
+          bookingId,
+          finalizationFailure);
+    }
+  }
+
+  private void recordUnknownRefund(UUID refundId, RuntimeException finalizationFailure) {
+    try {
+      refundTransactions.markOutcomeUnknown(refundId, finalizationFailure);
+    } catch (RuntimeException reconciliationFailure) {
+      finalizationFailure.addSuppressed(reconciliationFailure);
+      log.error(
+          "Refund finalization and reconciliation persistence failed refundId={}",
+          refundId,
+          finalizationFailure);
+    }
   }
 
   private Booking owned(UUID id, User user) {

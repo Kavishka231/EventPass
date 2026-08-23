@@ -5,7 +5,9 @@ import com.eventpass.common.error.ApiException;
 import com.eventpass.seat.EventSeatRepository;
 import com.eventpass.user.User;
 import com.eventpass.venue.VenueRepository;
+import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -80,24 +82,22 @@ public class EventService {
   public EventController.EventResponse update(UUID id, EventController.EventRequest r, User actor) {
     Event e = ownedForUpdate(id, actor);
     validateTransition(e, r.status());
+    validatePublishedSchedule(e, r);
     apply(e, r);
     return response(e);
   }
 
   public void cancel(UUID id, User actor) {
+    List<UUID> incomplete = new java.util.ArrayList<>();
     cancellationTransactions
         .cancel(id, actor)
-        .forEach(
-            bookingId -> {
-              try {
-                bookingService.cancelForEvent(bookingId);
-              } catch (RuntimeException exception) {
-                log.warn(
-                    "Event cancellation refund requires follow-up for bookingId={}",
-                    bookingId,
-                    exception);
-              }
-            });
+        .forEach(bookingId -> reconcile(bookingId, incomplete));
+    if (!incomplete.isEmpty()) {
+      throw new ApiException(
+          HttpStatus.SERVICE_UNAVAILABLE,
+          "EVENT_CANCELLATION_INCOMPLETE",
+          "The event is cancelled, but one or more booking refunds require reconciliation.");
+    }
   }
 
   private Event ownedForUpdate(UUID id, User user) {
@@ -152,6 +152,34 @@ public class EventService {
           HttpStatus.CONFLICT,
           "INVALID_EVENT_TRANSITION",
           "Requested event state transition is not allowed.");
+    }
+  }
+
+  private void validatePublishedSchedule(Event event, EventController.EventRequest request) {
+    if (event.getStatus() != Event.Status.PUBLISHED) return;
+    boolean scheduleChanged =
+        !sameDatabaseInstant(event.getStartDateTime(), request.startDateTime())
+            || !sameDatabaseInstant(event.getEndDateTime(), request.endDateTime())
+            || !event.getVenue().getId().equals(request.venueId());
+    if (scheduleChanged) {
+      throw new ApiException(
+          HttpStatus.CONFLICT,
+          "PUBLISHED_EVENT_SCHEDULE_IMMUTABLE",
+          "A published event's venue and schedule cannot be changed.");
+    }
+  }
+
+  private boolean sameDatabaseInstant(Instant left, Instant right) {
+    return Duration.between(left, right).abs().compareTo(Duration.ofNanos(1_000)) <= 0;
+  }
+
+  private void reconcile(UUID bookingId, List<UUID> incomplete) {
+    try {
+      bookingService.cancelForEvent(bookingId);
+    } catch (RuntimeException exception) {
+      incomplete.add(bookingId);
+      log.warn(
+          "Event cancellation refund requires follow-up for bookingId={}", bookingId, exception);
     }
   }
 

@@ -8,6 +8,7 @@ import static org.mockito.Mockito.when;
 import com.eventpass.common.error.ErrorResponseWriter;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
+import org.springframework.dao.QueryTimeoutException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.mock.web.MockFilterChain;
 import org.springframework.mock.web.MockHttpServletRequest;
@@ -32,5 +33,21 @@ class RateLimitFilterTest {
     assertThat(body.path("path").asText()).isEqualTo("/api/v1/auth/login");
     assertThat(body.path("requestId").asText()).isEqualTo("rate-request");
     assertThat(body.hasNonNull("timestamp")).isTrue();
+  }
+
+  @Test
+  void transientRedisDataAccessFailureDoesNotTurnARequestIntoAnHttpError() throws Exception {
+    StringRedisTemplate redis = mock(StringRedisTemplate.class);
+    when(redis.<Long>execute(any(), any(), any()))
+        .thenThrow(new QueryTimeoutException("Redis timed out"));
+    RateLimitFilter filter =
+        new RateLimitFilter(
+            redis, new ErrorResponseWriter(new ObjectMapper().findAndRegisterModules()));
+    MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/auth/login");
+    MockHttpServletResponse response = new MockHttpServletResponse();
+
+    filter.doFilterInternal(request, response, new MockFilterChain());
+
+    assertThat(response.getStatus()).isEqualTo(200);
   }
 }
