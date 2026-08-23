@@ -18,7 +18,8 @@ The backend now includes:
 - event and inventory integration coverage for venues, capacity, physical seats, organizer ownership, publication, pricing, and blocking;
 - expanded booking lifecycle coverage for success, durable payment failure, expiration, cancellation, seat resale, ticket generation, and idempotency;
 - an end-to-end register/login/event-browse/seat-selection/booking/payment/ticket retrieval test through the public HTTP API;
-- Java 21 formatting/build CI and PostgreSQL/Redis Testcontainers coverage for authorization, suspended/invalid sessions, seat contention, financial/admin races, competing outbox publishers, duplicate event delivery, and the full active-event cancellation chain.
+- Java 21 formatting/build CI plus dependency-change review, CodeQL analysis, Trivy dependency/configuration/secret and container scanning, downloadable CycloneDX image SBOMs, and weekly Maven/Actions/base-image update checks;
+- PostgreSQL/Redis Testcontainers coverage for authorization, suspended/invalid sessions, seat contention, financial/admin races, competing outbox publishers, duplicate event delivery, and the full active-event cancellation chain.
 
 ## Repository structure
 
@@ -42,6 +43,8 @@ eventpass/
 To create the first administrator, set `BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD` before the first startup. Remove those values after the account has been created.
 
 Run backend formatting and tests from `backend/` with `mvn spotless:check verify`. Integration tests use Testcontainers and skip only when Docker is unavailable.
+
+The `backend-security` GitHub Actions workflow runs on feature branches, pull requests, `main`, a weekly schedule, and manual dispatch. High or critical findings fail the relevant dependency, repository, or container gate; each container run retains a CycloneDX SBOM artifact for 30 days. CodeQL result upload requires GitHub code scanning to be available for the repository.
 
 Users register as `CUSTOMER`. Organizer/admin promotion is deliberately an administrative database/bootstrap concern; public self-registration can never elevate roles.
 

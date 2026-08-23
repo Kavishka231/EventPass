@@ -7,3 +7,9 @@ Suspended or disabled accounts cannot log in, refresh, or authenticate an existi
 Browser access uses an explicit credentialed CORS origin allowlist; wildcard origins are rejected. Health/liveness/readiness probes are public, while all other Actuator endpoints require an administrator. Authentication and access-denied failures use the standard JSON error envelope without exposing security exceptions. Responses deny framing, cross-origin capabilities, referrer leakage, and undeclared content sources; production enables HSTS and disables Swagger/OpenAPI endpoints.
 
 Production secrets must be injected through environment variables. HTTPS and restrictive CORS should be configured at the deployment ingress for approved origins.
+
+## Automated security checks
+
+GitHub Actions runs CodeQL against the compiled Java backend and rejects pull requests that introduce dependencies with high or critical known vulnerabilities. Trivy scans the repository for vulnerable dependencies, infrastructure misconfiguration, and committed secrets, then scans the built backend image for high or critical fixed vulnerabilities. The image scan also produces a CycloneDX SBOM artifact retained for 30 days. Dependabot checks Maven dependencies, GitHub Actions, and backend container base images weekly.
+
+These controls are preventive signals, not a substitute for patch management or incident response. Triage findings against exploitability and deployment context, document any accepted risk, rotate any exposed credential immediately, and rerun the failed workflow after remediation. Do not add broad ignore rules; each suppression must identify a reviewed finding and a time-bounded rationale.

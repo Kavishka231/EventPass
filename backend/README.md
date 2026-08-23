@@ -18,7 +18,7 @@ This workspace contains the Java 21 Spring Boot API, Flyway migrations, unit and
 - Event tests: MockMvc flows cover venue and physical-seat creation, capacity limits, organizer ownership, publication prerequisites, inventory pricing/blocking, and immutable published inventory.
 - Booking tests: PostgreSQL/Redis integration flows cover payment success/failure, expiration and cancellation release, seat resale, ticket replacement, and idempotent side effects.
 - End-to-end test: a full MockMvc customer journey covers registration, login, published-event discovery, seat selection, successful booking/payment, and active ticket retrieval.
-- Delivery: the backend image uses a dependency-cache-mounted Java 21 build stage, excludes local artifacts, and runs as a non-root JRE user; CI verifies tests before building the image.
+- Delivery: the backend image uses a dependency-cache-mounted Java 21 build stage, excludes local artifacts, and runs as a non-root JRE user; CI verifies tests before building the image, reviews dependency changes, performs CodeQL and Trivy scans, and publishes a CycloneDX image SBOM artifact.
 
 From this directory:
 
