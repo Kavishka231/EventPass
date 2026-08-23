@@ -1,13 +1,12 @@
 package com.eventpass.booking;
 
 import com.eventpass.common.error.ApiException;
+import com.eventpass.common.metrics.BusinessMetrics;
 import com.eventpass.common.outbox.OutboxService;
 import com.eventpass.payment.*;
 import com.eventpass.seat.*;
 import com.eventpass.ticket.*;
 import com.eventpass.user.User;
-import io.micrometer.core.instrument.Counter;
-import io.micrometer.core.instrument.MeterRegistry;
 import java.time.*;
 import java.util.*;
 import org.springframework.data.domain.Page;
@@ -27,10 +26,7 @@ public class BookingService {
   private final RefundTransactions refundTransactions;
   private final PaymentRepository payments;
   private final OutboxService outbox;
-  private final Counter bookingAttempts;
-  private final Counter successfulBookings;
-  private final Counter failedBookings;
-  private final Counter paymentFailures;
+  private final BusinessMetrics metrics;
 
   public BookingService(
       BookingRepository bookings,
@@ -41,7 +37,7 @@ public class BookingService {
       RefundTransactions refundTransactions,
       PaymentRepository payments,
       OutboxService outbox,
-      MeterRegistry meterRegistry) {
+      BusinessMetrics metrics) {
     this.bookings = bookings;
     this.bookingItems = bookingItems;
     this.locks = locks;
@@ -50,15 +46,12 @@ public class BookingService {
     this.refundTransactions = refundTransactions;
     this.payments = payments;
     this.outbox = outbox;
-    this.bookingAttempts = meterRegistry.counter("eventpass.booking.attempts");
-    this.successfulBookings = meterRegistry.counter("eventpass.booking.successes");
-    this.failedBookings = meterRegistry.counter("eventpass.booking.failures");
-    this.paymentFailures = meterRegistry.counter("eventpass.payment.failures");
+    this.metrics = metrics;
   }
 
   public BookingController.BookingResponse create(
       BookingController.CreateBookingRequest request, String idempotencyKey, User user) {
-    bookingAttempts.increment();
+    metrics.bookingAttempted();
     BookingPaymentTransactions.PreparedBooking prepared =
         paymentTransactions.prepare(request, idempotencyKey, user);
     if (!prepared.requiresCharge()) return prepared.response();
@@ -73,7 +66,7 @@ public class BookingService {
                 prepared.response().currency(),
                 idempotencyKey);
       } catch (RuntimeException exception) {
-        paymentFailures.increment();
+        metrics.paymentFailed();
         paymentTransactions.markOutcomeUnknown(prepared.bookingId(), exception);
         throw new ApiException(
             HttpStatus.SERVICE_UNAVAILABLE,
@@ -83,11 +76,12 @@ public class BookingService {
       BookingPaymentTransactions.Completion completion =
           paymentTransactions.complete(prepared.bookingId(), result);
       if (!completion.successful()) {
-        failedBookings.increment();
-        paymentFailures.increment();
+        metrics.bookingFailed();
+        metrics.paymentFailed();
         throw paymentFailed();
       }
-      successfulBookings.increment();
+      metrics.paymentSucceeded();
+      metrics.bookingSucceeded();
       return completion.response();
     } finally {
       prepared
@@ -137,6 +131,7 @@ public class BookingService {
               refund.currency(),
               refund.idempotencyKey());
     } catch (RuntimeException exception) {
+      metrics.refundFailed();
       refundTransactions.markOutcomeUnknown(refund.refundId(), exception);
       throw new ApiException(
           HttpStatus.SERVICE_UNAVAILABLE,
@@ -144,11 +139,14 @@ public class BookingService {
           "The refund outcome is being reconciled; do not submit another cancellation.");
     }
     if (!refundTransactions.complete(refund.refundId(), result)) {
+      metrics.refundFailed();
       throw new ApiException(
           HttpStatus.SERVICE_UNAVAILABLE,
           "REFUND_FAILED",
           "The payment provider could not complete the refund.");
     }
+    metrics.refundSucceeded();
+    metrics.bookingCancelled();
   }
 
   @Transactional
