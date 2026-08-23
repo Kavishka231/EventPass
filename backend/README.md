@@ -20,6 +20,7 @@ This workspace contains the Java 21 Spring Boot API, Flyway migrations, unit and
 - End-to-end test: a full MockMvc customer journey covers registration, login, published-event discovery, seat selection, successful booking/payment, and active ticket retrieval.
 - Delivery: the backend image uses a dependency-cache-mounted Java 21 build stage, excludes local artifacts, and runs as a non-root JRE user; CI verifies tests before building the image, reviews dependency changes, performs CodeQL and Trivy scans, and publishes a CycloneDX image SBOM artifact.
 - Recovery: root-level PostgreSQL tooling creates atomic custom-format backups with checksums and retention, verifies them through disposable-database restores, and requires exact target confirmation before transactional recovery.
+- Performance: root-level k6 scenarios measure authentication, event and seat browsing, concurrent booking, expected seat contention, throughput, p95/p99 latency, and unexpected errors against an isolated production-like environment.
 
 From this directory:
 

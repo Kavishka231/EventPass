@@ -10,3 +10,5 @@ backups/
 *.dump
 *.dump.sha256
 *.dump.metadata
+performance/k6/customers.json
+performance-results/

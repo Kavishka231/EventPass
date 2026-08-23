@@ -21,6 +21,7 @@ The backend now includes:
 - Java 21 formatting/build CI plus dependency-change review, CodeQL analysis, Trivy dependency/configuration/secret and container scanning, downloadable CycloneDX image SBOMs, and weekly Maven/Actions/base-image update checks;
 - production startup enforcement for authenticated TLS Redis/Kafka connections, bounded client timeouts/backoff, and security-aware Kafka readiness checks;
 - PostgreSQL custom-format backup, checksum/full-restore verification, guarded transactional restore, and prefix-scoped retention tooling with an operator recovery runbook;
+- k6 performance scenarios for authentication, event/seat browsing, concurrent customer booking, and controlled seat contention with throughput, latency, conflict, and error measurements;
 - PostgreSQL/Redis Testcontainers coverage for authorization, suspended/invalid sessions, seat contention, financial/admin races, competing outbox publishers, duplicate event delivery, and the full active-event cancellation chain.
 
 ## Repository structure
@@ -31,6 +32,7 @@ eventpass/
 ├── frontend/      Frontend workspace
 ├── .github/       Shared CI workflows
 ├── ops/           Production backup, recovery, and operational tooling
+├── performance/   k6 load scenarios and performance-test runbooks
 ├── compose.yml    Shared local infrastructure and application orchestration
 └── *.md           Architecture, API, database, security, testing, and deployment docs
 ```
