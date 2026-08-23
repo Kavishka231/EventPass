@@ -20,6 +20,7 @@ The backend now includes:
 - an end-to-end register/login/event-browse/seat-selection/booking/payment/ticket retrieval test through the public HTTP API;
 - Java 21 formatting/build CI plus dependency-change review, CodeQL analysis, Trivy dependency/configuration/secret and container scanning, downloadable CycloneDX image SBOMs, and weekly Maven/Actions/base-image update checks;
 - production startup enforcement for authenticated TLS Redis/Kafka connections, bounded client timeouts/backoff, and security-aware Kafka readiness checks;
+- PostgreSQL custom-format backup, checksum/full-restore verification, guarded transactional restore, and prefix-scoped retention tooling with an operator recovery runbook;
 - PostgreSQL/Redis Testcontainers coverage for authorization, suspended/invalid sessions, seat contention, financial/admin races, competing outbox publishers, duplicate event delivery, and the full active-event cancellation chain.
 
 ## Repository structure
@@ -29,6 +30,7 @@ eventpass/
 ├── backend/       Spring Boot API, tests, Dockerfile, and backend environment example
 ├── frontend/      Frontend workspace
 ├── .github/       Shared CI workflows
+├── ops/           Production backup, recovery, and operational tooling
 ├── compose.yml    Shared local infrastructure and application orchestration
 └── *.md           Architecture, API, database, security, testing, and deployment docs
 ```
