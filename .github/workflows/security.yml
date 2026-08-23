@@ -53,7 +53,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Scan dependencies, configuration, and secrets
-        uses: aquasecurity/trivy-action@0.35.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
           scan-ref: .
@@ -69,7 +69,7 @@ jobs:
       - name: Build backend image
         run: docker build --tag eventpass-backend:${{ github.sha }} backend
       - name: Scan backend image
-        uses: aquasecurity/trivy-action@0.35.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: eventpass-backend:${{ github.sha }}
           scanners: vuln
@@ -78,7 +78,7 @@ jobs:
           exit-code: 1
       - name: Generate CycloneDX image SBOM
         if: always()
-        uses: aquasecurity/trivy-action@0.35.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: eventpass-backend:${{ github.sha }}
           format: cyclonedx
