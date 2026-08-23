@@ -1185,6 +1185,77 @@ class ConcurrentBookingIntegrationTest {
   }
 
   @Test
+  void customerJourneyRunsFromRegistrationThroughTicketRetrieval() throws Exception {
+    BookingFixture available = fixture();
+    String category = "E2E-" + UUID.randomUUID();
+    available.event().setCategory(category);
+    events.saveAndFlush(available.event());
+    String email = "e2e-customer-" + UUID.randomUUID() + "@example.com";
+    String password = "e2e-customer-password";
+
+    registerThroughHttp(email, password, "End", "ToEnd");
+    String loginBody =
+        mockMvc
+            .perform(
+                post("/api/v1/auth/login")
+                    .with(uniqueAuthClient())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(loginJson(email, password)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.accessToken").isString())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+    String accessToken = objectMapper.readTree(loginBody).path("accessToken").asText();
+    String authorization = "Bearer " + accessToken;
+
+    mockMvc
+        .perform(get("/api/v1/events").param("category", category))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.totalElements").value(1))
+        .andExpect(jsonPath("$.content[0].id").value(available.event().getId().toString()))
+        .andExpect(jsonPath("$.content[0].status").value("PUBLISHED"));
+    mockMvc
+        .perform(get("/api/v1/events/{eventId}/seats", available.event().getId()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.length()").value(1))
+        .andExpect(jsonPath("$[0].id").value(available.eventSeat().getId().toString()))
+        .andExpect(jsonPath("$[0].availability").value("AVAILABLE"))
+        .andExpect(jsonPath("$[0].price").value(100.00));
+
+    String bookingBody =
+        mockMvc
+            .perform(
+                post("/api/v1/bookings")
+                    .header("Authorization", authorization)
+                    .header("Idempotency-Key", "e2e-booking-" + UUID.randomUUID())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(bookingJson(available, "tok_success")))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.status").value("CONFIRMED"))
+            .andExpect(jsonPath("$.totalAmount").value(100.00))
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+    UUID bookingId = UUID.fromString(objectMapper.readTree(bookingBody).path("id").asText());
+    assertThat(payments.findByBookingId(bookingId).orElseThrow().getStatus())
+        .isEqualTo(Payment.Status.SUCCESS);
+    assertThat(inventory.findById(available.eventSeat().getId()).orElseThrow().getStatus())
+        .isEqualTo(EventSeat.Status.SOLD);
+
+    mockMvc
+        .perform(get("/api/v1/tickets").header("Authorization", authorization))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.totalElements").value(1))
+        .andExpect(jsonPath("$.content[0].bookingId").value(bookingId.toString()))
+        .andExpect(
+            jsonPath("$.content[0].eventSeatId").value(available.eventSeat().getId().toString()))
+        .andExpect(jsonPath("$.content[0].status").value("ACTIVE"))
+        .andExpect(jsonPath("$.content[0].ticketNumber").isString())
+        .andExpect(jsonPath("$.content[0].qrToken").isString());
+  }
+
+  @Test
   void customerCanRegisterThroughTheAuthenticationApi() throws Exception {
     String email = "REGISTER-" + UUID.randomUUID() + "@Example.com";
     JsonNode response =
