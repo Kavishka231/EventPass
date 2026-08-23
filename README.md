@@ -7,10 +7,10 @@ EventPass is organized as a monorepo with separate backend and frontend workspac
 The backend now includes:
 
 - secure customer registration, short-lived issuer/audience/type-scoped JWT access tokens, rotating hashed refresh-token families with reuse detection, logout, account-state enforcement, and environment-only administrator bootstrap;
-- administrator user/role/statistics APIs with self-change and last-active-admin protection, venue management, physical seat creation with capacity checks, organizer-owned events, guarded publication/cancellation with immediate ticket invalidation, automatic booking refunds and inventory release, and per-event pricing/blocking;
-- Redis TTL locks plus PostgreSQL row and advisory locks, optimistic versions, server-side pricing, user-scoped request-bound booking idempotency, provider-enforced same-key charge/refund replay, durable payment and refund lifecycles with guarded transitions, concurrency-safe cancellation, seat resale, expiration, and cryptographically secure tickets;
+- administrator user/role/statistics APIs with self-change and last-active-admin protection, venue management, physical seat creation with capacity checks, organizer-owned events, immutable published schedules/venues, guarded resumable cancellation with immediate ticket invalidation, automatic booking refunds and inventory release, and per-event pricing/blocking;
+- Redis TTL locks plus PostgreSQL row and advisory locks, optimistic versions, server-side pricing, user-scoped request-bound booking idempotency, provider-enforced same-key charge/refund replay, durable payment and refund lifecycles with explicit reconciliation of ambiguous provider or database-finalization outcomes, concurrency-safe cancellation, multi-worker-safe expiration claiming, seat resale, and cryptographically secure tickets;
 - versioned event envelopes, transactional outbox events with PostgreSQL `SKIP LOCKED` claiming, persisted exponential retries, explicitly provisioned Kafka topics, bounded consumer retries with dead-letter topics, atomic idempotent customer-notification creation, durable delivery state, and authenticated read APIs;
-- a uniform API error contract, explicit CORS and security headers, request/correlation IDs, production JSON logs, Redis rate limits, permissioned Prometheus metrics for booking/payment/refund outcomes, cancellation, expiration, outbox backlog, Kafka publication failures, and notification failures, plus PostgreSQL/Redis/Kafka readiness indicators;
+- a uniform API error contract, explicit CORS and security headers, request/correlation IDs, production JSON logs, fail-open Redis rate limits for transient Redis data-access failures, permissioned Prometheus metrics for booking/payment/refund outcomes, cancellation, expiration, outbox backlog, Kafka publication failures, and notification failures, plus PostgreSQL/Redis/Kafka readiness indicators;
 - bounded, sortable pagination for event, booking, ticket, administrator-user, and notification collections;
 - projection-based booking and ticket history queries with bulk seat lookup and matching PostgreSQL indexes, avoiding page-size-dependent lazy-loading queries;
 - HTTP contract integration coverage for booking response bodies and statuses, validation, authorization, bounded pagination, and standardized errors;
@@ -22,7 +22,7 @@ The backend now includes:
 - production startup enforcement for authenticated TLS Redis/Kafka connections, bounded client timeouts/backoff, and security-aware Kafka readiness checks;
 - PostgreSQL custom-format backup, checksum/full-restore verification, guarded transactional restore, and prefix-scoped retention tooling with an operator recovery runbook;
 - k6 performance scenarios for authentication, event/seat browsing, concurrent customer booking, and controlled seat contention with throughput, latency, conflict, and error measurements;
-- PostgreSQL/Redis Testcontainers coverage for authorization, suspended/invalid sessions, seat contention, financial/admin races, competing outbox publishers, duplicate event delivery, and the full active-event cancellation chain.
+- PostgreSQL/Redis Testcontainers coverage for authorization, suspended/invalid sessions, seat contention, competing expiration workers, financial/admin races, competing outbox publishers, duplicate event delivery, resumable event cancellation, and the full active-event cancellation chain.
 
 ## Repository structure
 

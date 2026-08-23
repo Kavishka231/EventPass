@@ -364,6 +364,58 @@ class ConcurrentBookingIntegrationTest {
   }
 
   @Test
+  void competingExpirationWorkersClaimABookingOnlyOnce() throws Exception {
+    BookingFixture fixture = fixture();
+    Booking pending = new Booking();
+    pending.setBookingReference("EXP-RACE-" + UUID.randomUUID().toString().substring(0, 8));
+    pending.setUser(fixture.customer());
+    pending.setEvent(fixture.event());
+    pending.setStatus(Booking.Status.PENDING);
+    pending.setTotalAmount(new BigDecimal("100.00"));
+    pending.setCurrency("LKR");
+    pending.setExpiresAt(Instant.now().minusSeconds(1));
+    pending.setIdempotencyKey("expiration-race-" + UUID.randomUUID());
+    pending.setIdempotencyOperation("BOOKING_CREATE");
+    pending.setIdempotencyRequestHash("r".repeat(64));
+    BookingItem item = new BookingItem();
+    item.setBooking(pending);
+    item.setEventSeat(fixture.eventSeat());
+    item.setUnitPrice(new BigDecimal("100.00"));
+    pending.getItems().add(item);
+    fixture.eventSeat().setStatus(EventSeat.Status.HELD);
+    inventory.saveAndFlush(fixture.eventSeat());
+    bookings.saveAndFlush(pending);
+    CountDownLatch ready = new CountDownLatch(2);
+    CountDownLatch start = new CountDownLatch(1);
+    Queue<Integer> expiredCounts = new ConcurrentLinkedQueue<>();
+
+    try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+      List<Future<?>> workers = new ArrayList<>();
+      for (int worker = 0; worker < 2; worker++) {
+        workers.add(
+            executor.submit(
+                () -> {
+                  ready.countDown();
+                  start.await();
+                  expiredCounts.add(service.expirePendingBookings());
+                  return null;
+                }));
+      }
+      ready.await();
+      start.countDown();
+      for (Future<?> worker : workers) worker.get();
+    }
+
+    assertThat(expiredCounts).hasSize(2).containsExactlyInAnyOrder(0, 1);
+    assertThat(bookings.findById(pending.getId()).orElseThrow().getStatus())
+        .isEqualTo(Booking.Status.EXPIRED);
+    assertThat(outboxEvents.findAll())
+        .filteredOn(event -> event.getAggregateId().equals(pending.getId()))
+        .filteredOn(event -> event.getEventType().equals("BOOKING_EXPIRED"))
+        .hasSize(1);
+  }
+
+  @Test
   void unknownProviderOutcomeIsFlaggedForReconciliationAndKeepsSeatHeld() {
     BookingFixture fixture = fixture();
     String key = "payment-unknown-" + UUID.randomUUID();
@@ -610,6 +662,43 @@ class ConcurrentBookingIntegrationTest {
   }
 
   @Test
+  void publishedEventScheduleAndVenueCannotChangeButMetadataCan() {
+    BookingFixture fixture = fixture();
+    Event event = fixture.event();
+    EventController.EventRequest changedSchedule =
+        new EventController.EventRequest(
+            event.getName(),
+            event.getDescription(),
+            event.getCategory(),
+            event.getStartDateTime().plusSeconds(3600),
+            event.getEndDateTime().plusSeconds(3600),
+            event.getVenue().getId(),
+            Event.Status.PUBLISHED);
+
+    assertThatThrownBy(
+            () -> eventService.update(event.getId(), changedSchedule, event.getOrganizer()))
+        .isInstanceOfSatisfying(
+            ApiException.class,
+            exception ->
+                assertThat(exception.code()).isEqualTo("PUBLISHED_EVENT_SCHEDULE_IMMUTABLE"));
+
+    EventController.EventRequest metadataUpdate =
+        new EventController.EventRequest(
+            event.getName() + " updated",
+            event.getDescription() + " updated",
+            event.getCategory(),
+            event.getStartDateTime(),
+            event.getEndDateTime(),
+            event.getVenue().getId(),
+            Event.Status.PUBLISHED);
+    EventController.EventResponse updated =
+        eventService.update(event.getId(), metadataUpdate, event.getOrganizer());
+    assertThat(updated.name()).isEqualTo(metadataUpdate.name());
+    assertThat(updated.startDateTime()).isEqualTo(event.getStartDateTime());
+    assertThat(updated.venueId()).isEqualTo(event.getVenue().getId());
+  }
+
+  @Test
   void eventCancellationOrchestratesRefundsTicketInvalidationAndInventoryRelease() {
     long refundsBefore = refunds.count();
     BookingFixture fixture = fixture();
@@ -676,6 +765,19 @@ class ConcurrentBookingIntegrationTest {
         .filteredOn(envelope -> envelope.getAggregateId().equals(fixture.event().getId()))
         .extracting(OutboxEvent::getEventType)
         .contains("EVENT_CANCELLED", "EVENT_TICKETS_CANCELLED");
+
+    long cancellationEvents =
+        outboxEvents.findAll().stream()
+            .filter(envelope -> envelope.getAggregateId().equals(fixture.event().getId()))
+            .filter(envelope -> envelope.getEventType().equals("EVENT_CANCELLED"))
+            .count();
+    eventService.cancel(fixture.event().getId(), fixture.event().getOrganizer());
+    assertThat(
+            outboxEvents.findAll().stream()
+                .filter(envelope -> envelope.getAggregateId().equals(fixture.event().getId()))
+                .filter(envelope -> envelope.getEventType().equals("EVENT_CANCELLED"))
+                .count())
+        .isEqualTo(cancellationEvents);
   }
 
   @Test
@@ -688,7 +790,11 @@ class ConcurrentBookingIntegrationTest {
     payment.setPaymentReference("mock_refund_fail");
     payments.save(payment);
 
-    eventService.cancel(fixture.event().getId(), fixture.event().getOrganizer());
+    assertThatThrownBy(
+            () -> eventService.cancel(fixture.event().getId(), fixture.event().getOrganizer()))
+        .isInstanceOfSatisfying(
+            ApiException.class,
+            exception -> assertThat(exception.code()).isEqualTo("EVENT_CANCELLATION_INCOMPLETE"));
 
     Refund refund = refunds.findByPaymentId(payment.getId()).orElseThrow();
     assertThat(events.findById(fixture.event().getId()).orElseThrow().getStatus())

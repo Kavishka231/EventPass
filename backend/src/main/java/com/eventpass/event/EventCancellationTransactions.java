@@ -33,6 +33,9 @@ class EventCancellationTransactions {
   @Transactional
   List<UUID> cancel(UUID eventId, User actor) {
     Event event = ownedAndLocked(eventId, actor);
+    if (event.getStatus() == Event.Status.CANCELLED) {
+      return confirmedBookingIds(eventId);
+    }
     if (event.getStatus() != Event.Status.DRAFT && event.getStatus() != Event.Status.PUBLISHED) {
       throw new ApiException(
           HttpStatus.CONFLICT,
@@ -45,10 +48,7 @@ class EventCancellationTransactions {
           "EVENT_HAS_PENDING_BOOKINGS",
           "Event cancellation must wait for pending booking payments to finish.");
     }
-    List<UUID> affectedBookingIds =
-        bookings.findAllByEventIdAndStatus(eventId, Booking.Status.CONFIRMED).stream()
-            .map(Booking::getId)
-            .toList();
+    List<UUID> affectedBookingIds = confirmedBookingIds(eventId);
     List<Ticket> affectedTickets = tickets.findAllByBookingEventId(eventId);
     affectedTickets.forEach(ticket -> ticket.setStatus(Ticket.Status.CANCELLED));
     event.setStatus(Event.Status.CANCELLED);
@@ -66,6 +66,12 @@ class EventCancellationTransactions {
         eventId,
         Map.of("eventId", eventId, "cancelledTickets", affectedTickets.size()));
     return affectedBookingIds;
+  }
+
+  private List<UUID> confirmedBookingIds(UUID eventId) {
+    return bookings.findAllByEventIdAndStatus(eventId, Booking.Status.CONFIRMED).stream()
+        .map(Booking::getId)
+        .toList();
   }
 
   private Event ownedAndLocked(UUID id, User user) {

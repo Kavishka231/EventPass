@@ -39,7 +39,20 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
 
   List<Booking> findAllByEventIdAndStatus(UUID eventId, Booking.Status status);
 
-  List<Booking> findTop100ByStatusAndExpiresAtBefore(Booking.Status status, Instant expiresAt);
+  @Query(
+      value =
+          """
+          SELECT *
+          FROM bookings
+          WHERE status = 'PENDING'
+            AND expires_at < :expiresAt
+          ORDER BY expires_at
+          LIMIT :batchSize
+          FOR UPDATE SKIP LOCKED
+          """,
+      nativeQuery = true)
+  List<Booking> claimExpiredBatch(
+      @Param("expiresAt") Instant expiresAt, @Param("batchSize") int batchSize);
 
   @Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
   @Query("select b from Booking b where b.id = :id")

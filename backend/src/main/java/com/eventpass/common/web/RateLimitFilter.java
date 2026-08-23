@@ -7,7 +7,7 @@ import jakarta.servlet.http.*;
 import java.io.IOException;
 import java.time.Instant;
 import java.util.List;
-import org.springframework.data.redis.RedisConnectionFailureException;
+import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.security.core.Authentication;
@@ -53,7 +53,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
             request, response, 429, "RATE_LIMIT_EXCEEDED", "Too many requests. Try again later.");
         return;
       }
-    } catch (RedisConnectionFailureException ignored) {
+    } catch (DataAccessException ignored) {
       // Database locking and authentication controls remain authoritative if Redis is unavailable.
     }
     chain.doFilter(request, response);
