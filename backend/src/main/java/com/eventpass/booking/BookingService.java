@@ -10,6 +10,8 @@ import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.*;
 import java.util.*;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class BookingService {
   private static final String BOOKING_TOPIC = "booking.events";
   private final BookingRepository bookings;
+  private final BookingItemRepository bookingItems;
   private final SeatLockService locks;
   private final PaymentProvider paymentProvider;
   private final BookingPaymentTransactions paymentTransactions;
@@ -31,6 +34,7 @@ public class BookingService {
 
   public BookingService(
       BookingRepository bookings,
+      BookingItemRepository bookingItems,
       SeatLockService locks,
       PaymentProvider paymentProvider,
       BookingPaymentTransactions paymentTransactions,
@@ -39,6 +43,7 @@ public class BookingService {
       OutboxService outbox,
       MeterRegistry meterRegistry) {
     this.bookings = bookings;
+    this.bookingItems = bookingItems;
     this.locks = locks;
     this.paymentProvider = paymentProvider;
     this.paymentTransactions = paymentTransactions;
@@ -92,10 +97,19 @@ public class BookingService {
   }
 
   @Transactional(readOnly = true)
-  public List<BookingController.BookingResponse> list(User user) {
-    return bookings.findAllByUserIdOrderByCreatedAtDesc(user.getId()).stream()
-        .map(this::response)
-        .toList();
+  public Page<BookingController.BookingResponse> list(User user, Pageable pageable) {
+    Page<BookingListRow> page = bookings.findListRowsByUserId(user.getId(), pageable);
+    List<UUID> bookingIds = page.getContent().stream().map(BookingListRow::id).toList();
+    if (bookingIds.isEmpty()) return page.map(row -> response(row, List.of()));
+    Map<UUID, List<UUID>> seatIdsByBooking =
+        bookingItems.findSeatRowsByBookingIds(bookingIds).stream()
+            .collect(
+                java.util.stream.Collectors.groupingBy(
+                    BookingSeatRow::bookingId,
+                    LinkedHashMap::new,
+                    java.util.stream.Collectors.mapping(
+                        BookingSeatRow::eventSeatId, java.util.stream.Collectors.toList())));
+    return page.map(row -> response(row, seatIdsByBooking.getOrDefault(row.id(), List.of())));
   }
 
   @Transactional(readOnly = true)
@@ -192,6 +206,18 @@ public class BookingService {
         booking.getCurrency(),
         booking.getItems().stream().map(item -> item.getEventSeat().getId()).toList(),
         booking.getCreatedAt());
+  }
+
+  private BookingController.BookingResponse response(BookingListRow booking, List<UUID> seatIds) {
+    return new BookingController.BookingResponse(
+        booking.id(),
+        booking.reference(),
+        booking.eventId(),
+        booking.status(),
+        booking.totalAmount(),
+        booking.currency(),
+        seatIds,
+        booking.createdAt());
   }
 
   private ApiException paymentFailed() {

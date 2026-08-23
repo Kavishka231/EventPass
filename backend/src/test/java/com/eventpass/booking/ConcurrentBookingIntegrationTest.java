@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -26,13 +27,16 @@ import com.eventpass.payment.Refund;
 import com.eventpass.payment.RefundRepository;
 import com.eventpass.seat.*;
 import com.eventpass.ticket.TicketRepository;
+import com.eventpass.ticket.TicketService;
 import com.eventpass.user.*;
 import com.eventpass.venue.*;
+import jakarta.persistence.EntityManagerFactory;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.hibernate.SessionFactory;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -69,6 +73,7 @@ class ConcurrentBookingIntegrationTest {
     r.add("spring.datasource.password", postgres::getPassword);
     r.add("spring.data.redis.host", redis::getHost);
     r.add("spring.data.redis.port", () -> redis.getMappedPort(6379));
+    r.add("spring.jpa.properties.hibernate.generate_statistics", () -> true);
   }
 
   @Autowired BookingService service;
@@ -84,6 +89,7 @@ class ConcurrentBookingIntegrationTest {
   @Autowired PaymentProvider paymentProvider;
   @Autowired RefundRepository refunds;
   @Autowired TicketRepository tickets;
+  @Autowired TicketService ticketService;
   @Autowired OutboxEventRepository outboxEvents;
   @Autowired PlatformTransactionManager transactionManager;
   @Autowired OutboxRecoveryService outboxRecovery;
@@ -94,6 +100,7 @@ class ConcurrentBookingIntegrationTest {
   @Autowired MockMvc mockMvc;
   @Autowired JwtService jwtService;
   @Autowired AuthService authService;
+  @Autowired EntityManagerFactory entityManagerFactory;
 
   @Test
   void exactlyOneOfTwentyCustomersCanBuyTheSameSeat() throws Exception {
@@ -753,7 +760,7 @@ class ConcurrentBookingIntegrationTest {
     mockMvc
         .perform(get("/api/v1/admin/statistics").header("Authorization", bearer(customer)))
         .andExpect(status().isForbidden())
-        .andExpect(jsonPath("$.error").value("FORBIDDEN"));
+        .andExpect(jsonPath("$.code").value("FORBIDDEN"));
   }
 
   @Test
@@ -767,7 +774,7 @@ class ConcurrentBookingIntegrationTest {
             delete("/api/v1/events/{id}", owned.event().getId())
                 .header("Authorization", bearer(otherOrganizer)))
         .andExpect(status().isForbidden())
-        .andExpect(jsonPath("$.error").value("EVENT_FORBIDDEN"));
+        .andExpect(jsonPath("$.code").value("EVENT_FORBIDDEN"));
   }
 
   @Test
@@ -787,6 +794,154 @@ class ConcurrentBookingIntegrationTest {
   }
 
   @Test
+  void customerBookingAndTicketCollectionsArePaginated() throws Exception {
+    BookingFixture first = fixture();
+    BookingFixture second = fixture();
+    service.create(first.request(), "page-first-" + UUID.randomUUID(), first.customer());
+    service.create(second.request(), "page-second-" + UUID.randomUUID(), first.customer());
+    String token = bearer(first.customer());
+
+    mockMvc
+        .perform(
+            get("/api/v1/bookings")
+                .param("page", "0")
+                .param("size", "1")
+                .header("Authorization", token))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.content.length()").value(1))
+        .andExpect(jsonPath("$.content[0].id").isString())
+        .andExpect(jsonPath("$.content[0].status").value("CONFIRMED"))
+        .andExpect(jsonPath("$.number").value(0))
+        .andExpect(jsonPath("$.size").value(1))
+        .andExpect(jsonPath("$.totalElements").value(2));
+
+    mockMvc
+        .perform(
+            get("/api/v1/tickets")
+                .param("page", "0")
+                .param("size", "1")
+                .header("Authorization", token))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.content.length()").value(1))
+        .andExpect(jsonPath("$.content[0].bookingId").isString())
+        .andExpect(jsonPath("$.content[0].status").value("ACTIVE"))
+        .andExpect(jsonPath("$.number").value(0))
+        .andExpect(jsonPath("$.size").value(1))
+        .andExpect(jsonPath("$.totalElements").value(2));
+
+    mockMvc
+        .perform(get("/api/v1/bookings").param("size", "1000").header("Authorization", token))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.size").value(100));
+  }
+
+  @Test
+  void bookingHttpContractCoversSuccessAndValidation() throws Exception {
+    BookingFixture fixture = fixture();
+    String token = bearer(fixture.customer());
+
+    mockMvc
+        .perform(
+            post("/api/v1/bookings")
+                .header("Authorization", token)
+                .header("Idempotency-Key", "http-success-" + UUID.randomUUID())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(bookingJson(fixture, "tok_success")))
+        .andExpect(status().isCreated())
+        .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+        .andExpect(jsonPath("$.id").isString())
+        .andExpect(jsonPath("$.reference").isString())
+        .andExpect(jsonPath("$.eventId").value(fixture.event().getId().toString()))
+        .andExpect(jsonPath("$.status").value("CONFIRMED"))
+        .andExpect(jsonPath("$.totalAmount").value(100.00))
+        .andExpect(jsonPath("$.currency").value("LKR"))
+        .andExpect(jsonPath("$.eventSeatIds[0]").value(fixture.eventSeat().getId().toString()))
+        .andExpect(jsonPath("$.createdAt").exists());
+
+    mockMvc
+        .perform(
+            post("/api/v1/bookings")
+                .header("Authorization", token)
+                .header("Idempotency-Key", "http-validation-" + UUID.randomUUID())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {"eventId":"%s","eventSeatIds":[],"paymentToken":""}
+                    """
+                        .formatted(fixture.event().getId())))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.status").value(400))
+        .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+        .andExpect(jsonPath("$.message").isString())
+        .andExpect(jsonPath("$.path").value("/api/v1/bookings"))
+        .andExpect(jsonPath("$.requestId").isString())
+        .andExpect(jsonPath("$.timestamp").exists());
+  }
+
+  @Test
+  void bookingHttpContractCoversAuthorizationAndConflictErrors() throws Exception {
+    mockMvc
+        .perform(get("/api/v1/bookings"))
+        .andExpect(status().isUnauthorized())
+        .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+        .andExpect(jsonPath("$.status").value(401))
+        .andExpect(jsonPath("$.code").value("UNAUTHORIZED"))
+        .andExpect(jsonPath("$.message").isString())
+        .andExpect(jsonPath("$.path").value("/api/v1/bookings"))
+        .andExpect(jsonPath("$.requestId").isString())
+        .andExpect(jsonPath("$.timestamp").exists());
+
+    BookingFixture first = fixture();
+    BookingFixture changed = fixture();
+    String token = bearer(first.customer());
+    String key = "http-conflict-" + UUID.randomUUID();
+    mockMvc
+        .perform(
+            post("/api/v1/bookings")
+                .header("Authorization", token)
+                .header("Idempotency-Key", key)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(bookingJson(first, "tok_success")))
+        .andExpect(status().isCreated());
+
+    mockMvc
+        .perform(
+            post("/api/v1/bookings")
+                .header("Authorization", token)
+                .header("Idempotency-Key", key)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(bookingJson(changed, "tok_success")))
+        .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.status").value(409))
+        .andExpect(jsonPath("$.code").value("IDEMPOTENCY_PAYLOAD_MISMATCH"))
+        .andExpect(jsonPath("$.message").isString())
+        .andExpect(jsonPath("$.path").value("/api/v1/bookings"))
+        .andExpect(jsonPath("$.requestId").isString())
+        .andExpect(jsonPath("$.timestamp").exists());
+  }
+
+  @Test
+  void bookingAndTicketHistoryUseConstantQueryCounts() {
+    BookingFixture first = fixture();
+    BookingFixture second = fixture();
+    service.create(first.request(), "query-first-" + UUID.randomUUID(), first.customer());
+    service.create(second.request(), "query-second-" + UUID.randomUUID(), first.customer());
+    var statistics = entityManagerFactory.unwrap(SessionFactory.class).getStatistics();
+
+    statistics.clear();
+    var bookingPage = service.list(first.customer(), PageRequest.of(0, 20));
+    assertThat(bookingPage.getContent()).hasSize(2);
+    assertThat(bookingPage.getContent())
+        .allSatisfy(booking -> assertThat(booking.eventSeatIds()).hasSize(1));
+    assertThat(statistics.getPrepareStatementCount()).isEqualTo(2);
+
+    statistics.clear();
+    var ticketPage = ticketService.list(first.customer(), PageRequest.of(0, 20));
+    assertThat(ticketPage.getContent()).hasSize(2);
+    assertThat(statistics.getPrepareStatementCount()).isEqualTo(1);
+  }
+
+  @Test
   void suspendedUserCannotAuthenticateWithPreviouslyIssuedJwt() throws Exception {
     User customer = user("suspended-" + UUID.randomUUID() + "@example.com", User.Role.CUSTOMER);
     String token = bearer(customer);
@@ -796,7 +951,7 @@ class ConcurrentBookingIntegrationTest {
     mockMvc
         .perform(get("/api/v1/bookings").header("Authorization", token))
         .andExpect(status().isUnauthorized())
-        .andExpect(jsonPath("$.error").value("UNAUTHORIZED"));
+        .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
   }
 
   @Test
@@ -804,7 +959,7 @@ class ConcurrentBookingIntegrationTest {
     mockMvc
         .perform(get("/api/v1/bookings").header("Authorization", "Bearer invalid.jwt.token"))
         .andExpect(status().isUnauthorized())
-        .andExpect(jsonPath("$.error").value("UNAUTHORIZED"));
+        .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
 
     User customer = user("expired-" + UUID.randomUUID() + "@example.com", User.Role.CUSTOMER);
     JwtService expiredTokens =
@@ -819,7 +974,7 @@ class ConcurrentBookingIntegrationTest {
             get("/api/v1/bookings")
                 .header("Authorization", "Bearer " + expiredTokens.create(customer)))
         .andExpect(status().isUnauthorized())
-        .andExpect(jsonPath("$.error").value("UNAUTHORIZED"));
+        .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
   }
 
   @Test
@@ -840,7 +995,29 @@ class ConcurrentBookingIntegrationTest {
     mockMvc
         .perform(post("/api/v1/auth/refresh").contentType(MediaType.APPLICATION_JSON).content(body))
         .andExpect(status().isUnauthorized())
-        .andExpect(jsonPath("$.error").value("REFRESH_TOKEN_REUSE_DETECTED"));
+        .andExpect(jsonPath("$.code").value("REFRESH_TOKEN_REUSE_DETECTED"));
+  }
+
+  @Test
+  void validationAndNotFoundErrorsUseTheStandardContract() throws Exception {
+    mockMvc
+        .perform(
+            post("/api/v1/auth/register")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"email\":\"invalid\",\"password\":\"short\"}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+        .andExpect(jsonPath("$.timestamp").exists())
+        .andExpect(jsonPath("$.status").value(400))
+        .andExpect(jsonPath("$.message").isString())
+        .andExpect(jsonPath("$.path").value("/api/v1/auth/register"))
+        .andExpect(jsonPath("$.requestId").isString());
+
+    mockMvc
+        .perform(get("/api/v1/events/{id}", UUID.randomUUID()))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.code").value("EVENT_NOT_FOUND"))
+        .andExpect(jsonPath("$.status").value(404));
   }
 
   private String bearer(User user) {
@@ -930,6 +1107,13 @@ class ConcurrentBookingIntegrationTest {
     eventSeat.setPrice(new BigDecimal("100.00"));
     inventory.save(eventSeat);
     return new BookingFixture(event, eventSeat, customer);
+  }
+
+  private String bookingJson(BookingFixture fixture, String paymentToken) {
+    return """
+        {"eventId":"%s","eventSeatIds":["%s"],"paymentToken":"%s"}
+        """
+        .formatted(fixture.event().getId(), fixture.eventSeat().getId(), paymentToken);
   }
 
   private List<UUID> claimPendingOutboxIds() {
