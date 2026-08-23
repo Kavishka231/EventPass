@@ -15,6 +15,7 @@ This workspace contains the Java 21 Spring Boot API, Flyway migrations, unit and
 - Verification: Spotless and Maven verification pass; Testcontainers covers the HTTP authorization matrix, seat/financial/admin races, competing outbox publishers, duplicate event delivery, and the complete active-event cancellation orchestration through refunded payments, invalid tickets, released inventory, and outbox events.
 - HTTP contracts: MockMvc integration coverage verifies success statuses and payloads, authenticated validation, authorization failures, pagination bounds, idempotency conflicts, and every field in the standard error envelope.
 - Authentication tests: PostgreSQL-backed MockMvc flows cover registration, duplicate emails, login, inactive accounts, refresh rotation, logout, and refresh-token replay revocation.
+- Event tests: MockMvc flows cover venue and physical-seat creation, capacity limits, organizer ownership, publication prerequisites, inventory pricing/blocking, and immutable published inventory.
 - Delivery: the backend image uses a dependency-cache-mounted Java 21 build stage, excludes local artifacts, and runs as a non-root JRE user; CI verifies tests before building the image.
 
 From this directory:

@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -947,6 +948,160 @@ class ConcurrentBookingIntegrationTest {
   }
 
   @Test
+  void administratorCanCreateVenueSeatsAndCapacityIsEnforced() throws Exception {
+    User administrator =
+        user("inventory-admin-" + UUID.randomUUID() + "@example.com", User.Role.ADMIN);
+    try {
+      String venueBody =
+          mockMvc
+              .perform(
+                  post("/api/v1/venues")
+                      .header("Authorization", bearer(administrator))
+                      .contentType(MediaType.APPLICATION_JSON)
+                      .content(
+                          """
+                          {"name":"Contract Arena","address":"10 Test Road","city":"Colombo","capacity":2}
+                          """))
+              .andExpect(status().isCreated())
+              .andExpect(jsonPath("$.id").isString())
+              .andExpect(jsonPath("$.name").value("Contract Arena"))
+              .andExpect(jsonPath("$.capacity").value(2))
+              .andReturn()
+              .getResponse()
+              .getContentAsString();
+      UUID venueId = UUID.fromString(objectMapper.readTree(venueBody).path("id").asText());
+
+      mockMvc
+          .perform(
+              post("/api/v1/venues/{venueId}/seats", venueId)
+                  .header("Authorization", bearer(administrator))
+                  .contentType(MediaType.APPLICATION_JSON)
+                  .content(
+                      """
+                      [
+                        {"section":"A","row":"1","number":"1","type":"REGULAR"},
+                        {"section":"A","row":"1","number":"2","type":"VIP"}
+                      ]
+                      """))
+          .andExpect(status().isCreated())
+          .andExpect(jsonPath("$.length()").value(2))
+          .andExpect(jsonPath("$[0].venueId").value(venueId.toString()))
+          .andExpect(jsonPath("$[0].type").value("REGULAR"))
+          .andExpect(jsonPath("$[1].type").value("VIP"));
+
+      mockMvc
+          .perform(
+              post("/api/v1/venues/{venueId}/seats", venueId)
+                  .header("Authorization", bearer(administrator))
+                  .contentType(MediaType.APPLICATION_JSON)
+                  .content(
+                      """
+                      [{"section":"B","row":"1","number":"3","type":"PREMIUM"}]
+                      """))
+          .andExpect(status().isConflict())
+          .andExpect(jsonPath("$.code").value("VENUE_CAPACITY_EXCEEDED"));
+      assertThat(seats.countByVenueId(venueId)).isEqualTo(2);
+    } finally {
+      administrator.setStatus(User.Status.DISABLED);
+      users.saveAndFlush(administrator);
+    }
+  }
+
+  @Test
+  void eventInventoryRequiresOwnershipBeforePricingBlockingAndPublication() throws Exception {
+    DraftEventFixture fixture = draftEventFixture();
+    User otherOrganizer =
+        user("inventory-other-" + UUID.randomUUID() + "@example.com", User.Role.ORGANIZER);
+    String inventoryJson =
+        """
+        [
+          {"seatId":"%s","price":125.50,"blocked":false},
+          {"seatId":"%s","price":200.00,"blocked":true}
+        ]
+        """
+            .formatted(fixture.firstSeat().getId(), fixture.secondSeat().getId());
+
+    mockMvc
+        .perform(
+            put("/api/v1/events/{eventId}/inventory", fixture.event().getId())
+                .header("Authorization", bearer(otherOrganizer))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(inventoryJson))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.code").value("EVENT_FORBIDDEN"));
+
+    mockMvc
+        .perform(
+            put("/api/v1/events/{eventId}", fixture.event().getId())
+                .header("Authorization", bearer(fixture.organizer()))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(eventJson(fixture.event(), Event.Status.PUBLISHED)))
+        .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.code").value("EVENT_INVENTORY_REQUIRED"));
+
+    String configuredBody =
+        mockMvc
+            .perform(
+                put("/api/v1/events/{eventId}/inventory", fixture.event().getId())
+                    .header("Authorization", bearer(fixture.organizer()))
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(inventoryJson))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.length()").value(2))
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+    JsonNode configured = objectMapper.readTree(configuredBody);
+    List<JsonNode> configuredSeats = new ArrayList<>();
+    configured.forEach(configuredSeats::add);
+    assertThat(configuredSeats)
+        .anySatisfy(
+            seat -> {
+              assertThat(seat.path("price").decimalValue()).isEqualByComparingTo("125.50");
+              assertThat(seat.path("availability").asText()).isEqualTo("AVAILABLE");
+            });
+    assertThat(configuredSeats)
+        .anySatisfy(
+            seat -> {
+              assertThat(seat.path("price").decimalValue()).isEqualByComparingTo("200.00");
+              assertThat(seat.path("availability").asText()).isEqualTo("BLOCKED");
+            });
+
+    mockMvc
+        .perform(
+            put("/api/v1/events/{eventId}", fixture.event().getId())
+                .header("Authorization", bearer(fixture.organizer()))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(eventJson(fixture.event(), Event.Status.PUBLISHED)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.status").value("PUBLISHED"));
+
+    mockMvc
+        .perform(get("/api/v1/events/{eventId}/seats", fixture.event().getId()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.length()").value(2));
+    assertThat(inventory.findAllByEventId(fixture.event().getId()))
+        .anySatisfy(
+            seat -> {
+              assertThat(seat.getPrice()).isEqualByComparingTo("125.50");
+              assertThat(seat.getStatus()).isEqualTo(EventSeat.Status.AVAILABLE);
+            })
+        .anySatisfy(
+            seat -> {
+              assertThat(seat.getPrice()).isEqualByComparingTo("200.00");
+              assertThat(seat.getStatus()).isEqualTo(EventSeat.Status.BLOCKED);
+            });
+    mockMvc
+        .perform(
+            put("/api/v1/events/{eventId}/inventory", fixture.event().getId())
+                .header("Authorization", bearer(fixture.organizer()))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(inventoryJson))
+        .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.code").value("INVENTORY_LOCKED"));
+  }
+
+  @Test
   void customerCanRegisterThroughTheAuthenticationApi() throws Exception {
     String email = "REGISTER-" + UUID.randomUUID() + "@Example.com";
     JsonNode response =
@@ -1289,6 +1444,62 @@ class ConcurrentBookingIntegrationTest {
     return new BookingFixture(event, eventSeat, customer);
   }
 
+  private DraftEventFixture draftEventFixture() {
+    String suffix = UUID.randomUUID().toString();
+    User organizer = user("draft-organizer-" + suffix + "@example.com", User.Role.ORGANIZER);
+    Venue venue = new Venue();
+    venue.setName("Draft Arena " + suffix);
+    venue.setAddress("20 Test Road");
+    venue.setCity("Colombo");
+    venue.setCapacity(2);
+    venues.save(venue);
+    Seat first = seat(venue, "1", Seat.Type.REGULAR);
+    Seat second = seat(venue, "2", Seat.Type.VIP);
+    Event event = new Event();
+    event.setName("Draft Event " + suffix);
+    event.setDescription("Inventory integration test");
+    event.setCategory("TEST");
+    event.setStartDateTime(Instant.now().plusSeconds(172800));
+    event.setEndDateTime(Instant.now().plusSeconds(176400));
+    event.setVenue(venue);
+    event.setOrganizer(organizer);
+    event.setStatus(Event.Status.DRAFT);
+    events.save(event);
+    return new DraftEventFixture(event, organizer, first, second);
+  }
+
+  private Seat seat(Venue venue, String number, Seat.Type type) {
+    Seat seat = new Seat();
+    seat.setVenue(venue);
+    seat.setSection("A");
+    seat.setRowNumber("1");
+    seat.setSeatNumber(number);
+    seat.setSeatType(type);
+    return seats.save(seat);
+  }
+
+  private String eventJson(Event event, Event.Status status) {
+    return """
+        {
+          "name":"%s",
+          "description":"%s",
+          "category":"%s",
+          "startDateTime":"%s",
+          "endDateTime":"%s",
+          "venueId":"%s",
+          "status":"%s"
+        }
+        """
+        .formatted(
+            event.getName(),
+            event.getDescription(),
+            event.getCategory(),
+            event.getStartDateTime(),
+            event.getEndDateTime(),
+            event.getVenue().getId(),
+            status);
+  }
+
   private String bookingJson(BookingFixture fixture, String paymentToken) {
     return """
         {"eventId":"%s","eventSeatIds":["%s"],"paymentToken":"%s"}
@@ -1369,6 +1580,8 @@ class ConcurrentBookingIntegrationTest {
           event.getId(), List.of(eventSeat.getId()), paymentToken);
     }
   }
+
+  private record DraftEventFixture(Event event, User organizer, Seat firstSeat, Seat secondSeat) {}
 
   private User user(String email, User.Role role) {
     User u = new User();
