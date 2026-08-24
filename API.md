@@ -12,7 +12,8 @@ Every error uses `{timestamp, status, code, message, path, requestId}`. Validati
 - Organizer/admin: `POST`, `PUT`, `DELETE /api/v1/events[/{id}]` and `PUT /api/v1/events/{eventId}/inventory`
 - Customer: `POST /api/v1/bookings` with required `Idempotency-Key`, plus paginated list, detail, and cancellation endpoints
 - Customer notifications: paginated `GET /api/v1/notifications`, `GET /api/v1/notifications/unread-count`, and `PATCH /api/v1/notifications/{id}/read`
-- Paginated `GET /api/v1/tickets`
+- Paginated customer `GET /api/v1/tickets`
+- Organizer/admin `POST /api/v1/tickets/validate` with `{ "qrToken": "...", "eventId": "..." }`. Administrators may validate any ticket; organizers are restricted to their own events. Validation rejects unknown, cancelled, previously used, wrong-event, and non-published-event tickets without changing ticket state.
 
 Collection endpoints for events, bookings, tickets, admin users, and notifications accept zero-based `page`, bounded `size`, and `sort=property,direction` parameters. The default page size is 20 and the maximum is 100. Booking, ticket, admin-user, and notification lists default to newest first; event search defaults to the nearest start time first. Responses use Spring's page envelope with `content`, page metadata, and total counts.
 

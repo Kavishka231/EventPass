@@ -3,6 +3,7 @@ package com.eventpass.ticket;
 import java.util.*;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -28,4 +29,7 @@ public interface TicketRepository extends JpaRepository<Ticket, UUID> {
   List<Ticket> findAllByBookingId(UUID bookingId);
 
   List<Ticket> findAllByBookingEventId(UUID eventId);
+
+  @EntityGraph(attributePaths = {"booking.event.organizer", "eventSeat.event"})
+  Optional<Ticket> findByQrToken(String qrToken);
 }

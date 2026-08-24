@@ -1,8 +1,11 @@
 package com.eventpass.ticket;
 
+import com.eventpass.common.error.ApiException;
+import com.eventpass.event.Event;
 import com.eventpass.user.User;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,5 +31,61 @@ public class TicketService {
                     ticket.qrToken(),
                     ticket.status(),
                     ticket.issuedAt()));
+  }
+
+  @Transactional(readOnly = true)
+  public TicketController.ValidationResponse validate(
+      TicketController.ValidateTicketRequest request, User actor) {
+    Ticket ticket =
+        tickets
+            .findByQrToken(request.qrToken())
+            .orElseThrow(
+                () ->
+                    new ApiException(
+                        HttpStatus.NOT_FOUND, "TICKET_NOT_FOUND", "Ticket was not found."));
+    Event event = ticket.getBooking().getEvent();
+    requireEventAccess(event, actor);
+    if (!event.getId().equals(request.eventId())
+        || !ticket.getEventSeat().getEvent().getId().equals(request.eventId())) {
+      throw new ApiException(
+          HttpStatus.CONFLICT,
+          "TICKET_EVENT_MISMATCH",
+          "Ticket does not belong to the requested event.");
+    }
+    if (ticket.getStatus() == Ticket.Status.CANCELLED) {
+      throw new ApiException(
+          HttpStatus.CONFLICT, "TICKET_CANCELLED", "Cancelled tickets are not valid for entry.");
+    }
+    if (ticket.getStatus() == Ticket.Status.USED || ticket.getUsedAt() != null) {
+      throw new ApiException(
+          HttpStatus.CONFLICT, "TICKET_ALREADY_USED", "Ticket has already been used.");
+    }
+    if (event.getStatus() != Event.Status.PUBLISHED) {
+      throw new ApiException(
+          HttpStatus.CONFLICT,
+          "EVENT_NOT_ADMITTING",
+          "The event is not in a state that permits ticket admission.");
+    }
+    return new TicketController.ValidationResponse(
+        ticket.getId(),
+        ticket.getTicketNumber(),
+        event.getId(),
+        ticket.getEventSeat().getId(),
+        ticket.getStatus(),
+        event.getName(),
+        event.getStartDateTime());
+  }
+
+  private void requireEventAccess(Event event, User actor) {
+    boolean administrator = actor.getRole() == User.Role.ADMIN;
+    boolean owner =
+        actor.getRole() == User.Role.ORGANIZER
+            && event.getOrganizer().getId().equals(actor.getId());
+    if (!administrator && !owner) {
+      throw new ApiException(
+          HttpStatus.FORBIDDEN,
+          "EVENT_ACCESS_DENIED",
+          "You are not authorized to validate tickets for this event.");
+    }
   }
 }

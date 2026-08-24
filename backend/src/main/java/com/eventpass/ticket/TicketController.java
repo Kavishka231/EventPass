@@ -1,12 +1,17 @@
 package com.eventpass.ticket;
 
 import com.eventpass.user.User;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import java.time.Instant;
 import java.util.*;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
@@ -28,11 +33,30 @@ public class TicketController {
       Ticket.Status status,
       Instant issuedAt) {}
 
+  public record ValidateTicketRequest(
+      @NotBlank @Size(max = 128) String qrToken, @NotNull UUID eventId) {}
+
+  public record ValidationResponse(
+      UUID ticketId,
+      String ticketNumber,
+      UUID eventId,
+      UUID eventSeatId,
+      Ticket.Status status,
+      String eventName,
+      Instant eventStartDateTime) {}
+
   @GetMapping
   Page<TicketResponse> list(
       @AuthenticationPrincipal User u,
       @PageableDefault(size = 20, sort = "issuedAt", direction = Sort.Direction.DESC)
           Pageable pageable) {
     return service.list(u, pageable);
+  }
+
+  @PostMapping("/validate")
+  @PreAuthorize("hasAnyRole('ORGANIZER','ADMIN')")
+  ValidationResponse validate(
+      @Valid @RequestBody ValidateTicketRequest request, @AuthenticationPrincipal User actor) {
+    return service.validate(request, actor);
   }
 }

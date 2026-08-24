@@ -1116,7 +1116,7 @@ class ConcurrentBookingIntegrationTest {
     mockMvc
         .perform(
             put("/api/v1/events/{eventId}", fixture.event().getId())
-                .header("Authorization", bearer(fixture.organizer()))
+                .header("Authorization", bearer(fixture.event().getOrganizer()))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(eventJson(fixture.event(), Event.Status.PUBLISHED)))
         .andExpect(status().isConflict())
@@ -1253,6 +1253,48 @@ class ConcurrentBookingIntegrationTest {
         .andExpect(jsonPath("$.content[0].status").value("ACTIVE"))
         .andExpect(jsonPath("$.content[0].ticketNumber").isString())
         .andExpect(jsonPath("$.content[0].qrToken").isString());
+  }
+
+  @Test
+  void ticketValidationRequiresAnAdministratorOrTheOwningOrganizer() throws Exception {
+    BookingFixture fixture = fixture();
+    BookingController.BookingResponse booking =
+        service.create(fixture.request(), "admission-" + UUID.randomUUID(), fixture.customer());
+    com.eventpass.ticket.Ticket ticket =
+        tickets.findAllByBookingId(booking.id()).stream().findFirst().orElseThrow();
+    String request =
+        objectMapper.writeValueAsString(
+            Map.of("qrToken", ticket.getQrToken(), "eventId", fixture.event().getId()));
+
+    mockMvc
+        .perform(
+            post("/api/v1/tickets/validate")
+                .header("Authorization", bearer(fixture.event().getOrganizer()))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(request))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.ticketId").value(ticket.getId().toString()))
+        .andExpect(jsonPath("$.eventId").value(fixture.event().getId().toString()))
+        .andExpect(jsonPath("$.status").value("ACTIVE"));
+
+    mockMvc
+        .perform(
+            post("/api/v1/tickets/validate")
+                .header("Authorization", bearer(fixture.customer()))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(request))
+        .andExpect(status().isForbidden());
+
+    User otherOrganizer =
+        user("admission-organizer-" + UUID.randomUUID() + "@example.com", User.Role.ORGANIZER);
+    mockMvc
+        .perform(
+            post("/api/v1/tickets/validate")
+                .header("Authorization", bearer(otherOrganizer))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(request))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.code").value("EVENT_ACCESS_DENIED"));
   }
 
   @Test
