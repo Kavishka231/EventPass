@@ -1298,6 +1298,48 @@ class ConcurrentBookingIntegrationTest {
   }
 
   @Test
+  void simultaneousTicketRedemptionsAllowExactlyOneAdmission() throws Exception {
+    BookingFixture fixture = fixture();
+    BookingController.BookingResponse booking =
+        service.create(fixture.request(), "redemption-" + UUID.randomUUID(), fixture.customer());
+    com.eventpass.ticket.Ticket ticket =
+        tickets.findAllByBookingId(booking.id()).stream().findFirst().orElseThrow();
+    com.eventpass.ticket.TicketController.ValidateTicketRequest request =
+        new com.eventpass.ticket.TicketController.ValidateTicketRequest(
+            ticket.getQrToken(), fixture.event().getId());
+    CountDownLatch ready = new CountDownLatch(2);
+    CountDownLatch start = new CountDownLatch(1);
+    Queue<String> outcomes = new ConcurrentLinkedQueue<>();
+
+    try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+      List<Future<?>> scans = new ArrayList<>();
+      for (int scan = 0; scan < 2; scan++) {
+        scans.add(
+            executor.submit(
+                () -> {
+                  ready.countDown();
+                  start.await();
+                  try {
+                    ticketService.redeem(request, fixture.event().getOrganizer());
+                    outcomes.add("SUCCESS");
+                  } catch (ApiException exception) {
+                    outcomes.add(exception.code());
+                  }
+                  return null;
+                }));
+      }
+      ready.await();
+      start.countDown();
+      for (Future<?> scan : scans) scan.get();
+    }
+
+    assertThat(outcomes).containsExactlyInAnyOrder("SUCCESS", "TICKET_ALREADY_USED");
+    com.eventpass.ticket.Ticket redeemed = tickets.findById(ticket.getId()).orElseThrow();
+    assertThat(redeemed.getStatus()).isEqualTo(com.eventpass.ticket.Ticket.Status.USED);
+    assertThat(redeemed.getUsedAt()).isNotNull();
+  }
+
+  @Test
   void customerCanRegisterThroughTheAuthenticationApi() throws Exception {
     String email = "REGISTER-" + UUID.randomUUID() + "@Example.com";
     JsonNode response =

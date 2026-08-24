@@ -45,6 +45,9 @@ public class TicketController {
       String eventName,
       Instant eventStartDateTime) {}
 
+  public record RedemptionResponse(
+      UUID ticketId, String ticketNumber, UUID eventId, Ticket.Status status, Instant usedAt) {}
+
   @GetMapping
   Page<TicketResponse> list(
       @AuthenticationPrincipal User u,
@@ -58,5 +61,12 @@ public class TicketController {
   ValidationResponse validate(
       @Valid @RequestBody ValidateTicketRequest request, @AuthenticationPrincipal User actor) {
     return service.validate(request, actor);
+  }
+
+  @PostMapping("/redeem")
+  @PreAuthorize("hasAnyRole('ORGANIZER','ADMIN')")
+  RedemptionResponse redeem(
+      @Valid @RequestBody ValidateTicketRequest request, @AuthenticationPrincipal User actor) {
+    return service.redeem(request, actor);
   }
 }

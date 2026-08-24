@@ -3,6 +3,7 @@ package com.eventpass.ticket;
 import com.eventpass.common.error.ApiException;
 import com.eventpass.event.Event;
 import com.eventpass.user.User;
+import java.time.Instant;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
@@ -43,10 +44,40 @@ public class TicketService {
                 () ->
                     new ApiException(
                         HttpStatus.NOT_FOUND, "TICKET_NOT_FOUND", "Ticket was not found."));
+    Event event = validForAdmission(ticket, request.eventId(), actor);
+    return new TicketController.ValidationResponse(
+        ticket.getId(),
+        ticket.getTicketNumber(),
+        event.getId(),
+        ticket.getEventSeat().getId(),
+        ticket.getStatus(),
+        event.getName(),
+        event.getStartDateTime());
+  }
+
+  @Transactional
+  public TicketController.RedemptionResponse redeem(
+      TicketController.ValidateTicketRequest request, User actor) {
+    Ticket ticket =
+        tickets
+            .lockByQrToken(request.qrToken())
+            .orElseThrow(
+                () ->
+                    new ApiException(
+                        HttpStatus.NOT_FOUND, "TICKET_NOT_FOUND", "Ticket was not found."));
+    Event event = validForAdmission(ticket, request.eventId(), actor);
+    Instant usedAt = Instant.now();
+    ticket.setStatus(Ticket.Status.USED);
+    ticket.setUsedAt(usedAt);
+    return new TicketController.RedemptionResponse(
+        ticket.getId(), ticket.getTicketNumber(), event.getId(), Ticket.Status.USED, usedAt);
+  }
+
+  private Event validForAdmission(Ticket ticket, java.util.UUID eventId, User actor) {
     Event event = ticket.getBooking().getEvent();
     requireEventAccess(event, actor);
-    if (!event.getId().equals(request.eventId())
-        || !ticket.getEventSeat().getEvent().getId().equals(request.eventId())) {
+    if (!event.getId().equals(eventId)
+        || !ticket.getEventSeat().getEvent().getId().equals(eventId)) {
       throw new ApiException(
           HttpStatus.CONFLICT,
           "TICKET_EVENT_MISMATCH",
@@ -66,14 +97,7 @@ public class TicketService {
           "EVENT_NOT_ADMITTING",
           "The event is not in a state that permits ticket admission.");
     }
-    return new TicketController.ValidationResponse(
-        ticket.getId(),
-        ticket.getTicketNumber(),
-        event.getId(),
-        ticket.getEventSeat().getId(),
-        ticket.getStatus(),
-        event.getName(),
-        event.getStartDateTime());
+    return event;
   }
 
   private void requireEventAccess(Event event, User actor) {
@@ -85,7 +109,7 @@ public class TicketService {
       throw new ApiException(
           HttpStatus.FORBIDDEN,
           "EVENT_ACCESS_DENIED",
-          "You are not authorized to validate tickets for this event.");
+          "You are not authorized to process tickets for this event.");
     }
   }
 }

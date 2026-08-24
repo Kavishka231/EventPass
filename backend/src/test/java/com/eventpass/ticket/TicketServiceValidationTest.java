@@ -102,6 +102,27 @@ class TicketServiceValidationTest {
     assertThat(response.ticketId()).isEqualTo(ticket.getId());
   }
 
+  @Test
+  void redeemsAnActiveTicketAndRecordsItsUseTime() {
+    when(tickets.lockByQrToken(ticket.getQrToken())).thenReturn(Optional.of(ticket));
+
+    TicketController.RedemptionResponse response =
+        service.redeem(request(event.getId()), organizer);
+
+    assertThat(response.status()).isEqualTo(Ticket.Status.USED);
+    assertThat(response.usedAt()).isNotNull();
+    assertThat(ticket.getStatus()).isEqualTo(Ticket.Status.USED);
+    assertThat(ticket.getUsedAt()).isEqualTo(response.usedAt());
+  }
+
+  @Test
+  void rejectsASecondRedemptionAfterTheTicketIsUsed() {
+    when(tickets.lockByQrToken(ticket.getQrToken())).thenReturn(Optional.of(ticket));
+    service.redeem(request(event.getId()), organizer);
+
+    assertCode("TICKET_ALREADY_USED", () -> service.redeem(request(event.getId()), organizer));
+  }
+
   private TicketController.ValidateTicketRequest request(UUID eventId) {
     return new TicketController.ValidateTicketRequest(ticket.getQrToken(), eventId);
   }

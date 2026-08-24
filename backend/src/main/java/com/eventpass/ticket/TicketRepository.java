@@ -5,6 +5,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -32,4 +33,8 @@ public interface TicketRepository extends JpaRepository<Ticket, UUID> {
 
   @EntityGraph(attributePaths = {"booking.event.organizer", "eventSeat.event"})
   Optional<Ticket> findByQrToken(String qrToken);
+
+  @Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+  @Query("select ticket from Ticket ticket where ticket.qrToken = :qrToken")
+  Optional<Ticket> lockByQrToken(@Param("qrToken") String qrToken);
 }
