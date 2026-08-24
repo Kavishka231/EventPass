@@ -1298,15 +1298,86 @@ class ConcurrentBookingIntegrationTest {
   }
 
   @Test
+  void ticketAdmissionRejectsInvalidCancelledWrongEventAndUsedTickets() throws Exception {
+    BookingFixture fixture = fixture();
+    BookingController.BookingResponse booking =
+        service.create(
+            fixture.request(), "admission-states-" + UUID.randomUUID(), fixture.customer());
+    com.eventpass.ticket.Ticket ticket =
+        tickets.findAllByBookingId(booking.id()).stream().findFirst().orElseThrow();
+    String authorization = bearer(fixture.event().getOrganizer());
+    String validRequest =
+        objectMapper.writeValueAsString(
+            Map.of("qrToken", ticket.getQrToken(), "eventId", fixture.event().getId()));
+
+    mockMvc
+        .perform(
+            post("/api/v1/tickets/validate")
+                .header("Authorization", authorization)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(validRequest))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.status").value("ACTIVE"));
+
+    String invalidRequest =
+        objectMapper.writeValueAsString(
+            Map.of("qrToken", "unknown-qr-token", "eventId", fixture.event().getId()));
+    mockMvc
+        .perform(
+            post("/api/v1/tickets/validate")
+                .header("Authorization", authorization)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(invalidRequest))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.code").value("TICKET_NOT_FOUND"));
+
+    String wrongEventRequest =
+        objectMapper.writeValueAsString(
+            Map.of("qrToken", ticket.getQrToken(), "eventId", UUID.randomUUID()));
+    mockMvc
+        .perform(
+            post("/api/v1/tickets/validate")
+                .header("Authorization", authorization)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(wrongEventRequest))
+        .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.code").value("TICKET_EVENT_MISMATCH"));
+
+    ticket.setStatus(com.eventpass.ticket.Ticket.Status.CANCELLED);
+    tickets.saveAndFlush(ticket);
+    mockMvc
+        .perform(
+            post("/api/v1/tickets/validate")
+                .header("Authorization", authorization)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(validRequest))
+        .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.code").value("TICKET_CANCELLED"));
+
+    ticket.setStatus(com.eventpass.ticket.Ticket.Status.USED);
+    ticket.setUsedAt(Instant.now());
+    tickets.saveAndFlush(ticket);
+    mockMvc
+        .perform(
+            post("/api/v1/tickets/validate")
+                .header("Authorization", authorization)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(validRequest))
+        .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.code").value("TICKET_ALREADY_USED"));
+  }
+
+  @Test
   void simultaneousTicketRedemptionsAllowExactlyOneAdmission() throws Exception {
     BookingFixture fixture = fixture();
     BookingController.BookingResponse booking =
         service.create(fixture.request(), "redemption-" + UUID.randomUUID(), fixture.customer());
     com.eventpass.ticket.Ticket ticket =
         tickets.findAllByBookingId(booking.id()).stream().findFirst().orElseThrow();
-    com.eventpass.ticket.TicketController.ValidateTicketRequest request =
-        new com.eventpass.ticket.TicketController.ValidateTicketRequest(
-            ticket.getQrToken(), fixture.event().getId());
+    String request =
+        objectMapper.writeValueAsString(
+            Map.of("qrToken", ticket.getQrToken(), "eventId", fixture.event().getId()));
+    String authorization = bearer(fixture.event().getOrganizer());
     CountDownLatch ready = new CountDownLatch(2);
     CountDownLatch start = new CountDownLatch(1);
     Queue<String> outcomes = new ConcurrentLinkedQueue<>();
@@ -1319,11 +1390,20 @@ class ConcurrentBookingIntegrationTest {
                 () -> {
                   ready.countDown();
                   start.await();
-                  try {
-                    ticketService.redeem(request, fixture.event().getOrganizer());
+                  var response =
+                      mockMvc
+                          .perform(
+                              post("/api/v1/tickets/redeem")
+                                  .header("Authorization", authorization)
+                                  .contentType(MediaType.APPLICATION_JSON)
+                                  .content(request))
+                          .andReturn()
+                          .getResponse();
+                  if (response.getStatus() == 200) {
                     outcomes.add("SUCCESS");
-                  } catch (ApiException exception) {
-                    outcomes.add(exception.code());
+                  } else {
+                    outcomes.add(
+                        objectMapper.readTree(response.getContentAsString()).path("code").asText());
                   }
                   return null;
                 }));
