@@ -1420,6 +1420,74 @@ class ConcurrentBookingIntegrationTest {
   }
 
   @Test
+  void managementEndpointsEnforceEventOwnershipAndAdministratorAccess() throws Exception {
+    BookingFixture owned = fixture();
+    owned.event().setStartDateTime(Instant.now().plusSeconds(172_800));
+    owned.event().setEndDateTime(Instant.now().plusSeconds(176_400));
+    events.saveAndFlush(owned.event());
+    BookingController.BookingResponse booking =
+        service.create(owned.request(), "management-" + UUID.randomUUID(), owned.customer());
+    BookingFixture other = fixture();
+    User organizer = owned.event().getOrganizer();
+    User administrator =
+        user("management-admin-" + UUID.randomUUID() + "@example.com", User.Role.ADMIN);
+
+    mockMvc
+        .perform(
+            get("/api/v1/organizer/events/{eventId}/bookings", owned.event().getId())
+                .header("Authorization", bearer(organizer)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.totalElements").value(1))
+        .andExpect(jsonPath("$.content[0].id").value(booking.id().toString()))
+        .andExpect(jsonPath("$.content[0].customerId").value(owned.customer().getId().toString()))
+        .andExpect(jsonPath("$.content[0].customerEmail").value(owned.customer().getEmail()))
+        .andExpect(
+            jsonPath("$.content[0].eventSeatIds[0]").value(owned.eventSeat().getId().toString()));
+
+    mockMvc
+        .perform(
+            get("/api/v1/organizer/events/{eventId}/bookings", other.event().getId())
+                .header("Authorization", bearer(organizer)))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.code").value("EVENT_ACCESS_DENIED"));
+
+    mockMvc
+        .perform(
+            get("/api/v1/organizer/events/{eventId}/bookings", owned.event().getId())
+                .header("Authorization", bearer(owned.customer())))
+        .andExpect(status().isForbidden());
+
+    mockMvc
+        .perform(
+            get("/api/v1/admin/bookings")
+                .param("eventId", owned.event().getId().toString())
+                .param("status", "CONFIRMED")
+                .header("Authorization", bearer(administrator)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.totalElements").value(1))
+        .andExpect(jsonPath("$.content[0].id").value(booking.id().toString()));
+
+    mockMvc
+        .perform(
+            get("/api/v1/admin/bookings/{id}", booking.id())
+                .header("Authorization", bearer(administrator)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.customerEmail").value(owned.customer().getEmail()));
+
+    mockMvc
+        .perform(
+            post("/api/v1/admin/bookings/{id}/cancel", booking.id())
+                .header("Authorization", bearer(administrator)))
+        .andExpect(status().isNoContent());
+    assertThat(bookings.findById(booking.id()).orElseThrow().getStatus())
+        .isEqualTo(Booking.Status.CANCELLED);
+    assertThat(inventory.findById(owned.eventSeat().getId()).orElseThrow().getStatus())
+        .isEqualTo(EventSeat.Status.AVAILABLE);
+    administrator.setStatus(User.Status.SUSPENDED);
+    users.saveAndFlush(administrator);
+  }
+
+  @Test
   void customerCanRegisterThroughTheAuthenticationApi() throws Exception {
     String email = "REGISTER-" + UUID.randomUUID() + "@Example.com";
     JsonNode response =

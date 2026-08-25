@@ -33,6 +33,73 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
       countQuery = "select count(booking) from Booking booking where booking.user.id = :userId")
   Page<BookingListRow> findListRowsByUserId(@Param("userId") UUID userId, Pageable pageable);
 
+  @Query(
+      value =
+          """
+          select new com.eventpass.booking.EventBookingReportRow(
+            booking.id,
+            booking.bookingReference,
+            booking.user.id,
+            booking.user.email,
+            booking.user.firstName,
+            booking.user.lastName,
+            booking.status,
+            booking.totalAmount,
+            booking.currency,
+            booking.createdAt)
+          from Booking booking
+          where booking.event.id = :eventId
+          """,
+      countQuery = "select count(booking) from Booking booking where booking.event.id = :eventId")
+  Page<EventBookingReportRow> findReportRowsByEventId(
+      @Param("eventId") UUID eventId, Pageable pageable);
+
+  @Query(
+      value =
+          """
+          select new com.eventpass.booking.AdminBookingRow(
+            booking.id,
+            booking.bookingReference,
+            booking.event.id,
+            booking.event.name,
+            booking.user.id,
+            booking.user.email,
+            booking.status,
+            booking.totalAmount,
+            booking.currency,
+            booking.createdAt)
+          from Booking booking
+          where (:eventId is null or booking.event.id = :eventId)
+            and (:status is null or booking.status = :status)
+          """,
+      countQuery =
+          """
+          select count(booking)
+          from Booking booking
+          where (:eventId is null or booking.event.id = :eventId)
+            and (:status is null or booking.status = :status)
+          """)
+  Page<AdminBookingRow> findManagementRows(
+      @Param("eventId") UUID eventId, @Param("status") Booking.Status status, Pageable pageable);
+
+  @Query(
+      """
+      select new com.eventpass.booking.AdminBookingRow(
+        booking.id,
+        booking.bookingReference,
+        booking.event.id,
+        booking.event.name,
+        booking.user.id,
+        booking.user.email,
+        booking.status,
+        booking.totalAmount,
+        booking.currency,
+        booking.createdAt)
+      from Booking booking
+      where booking.id = :id
+      """)
+  Optional<AdminBookingRow> findManagementRowById(@Param("id") UUID id);
+
   long countByStatus(Booking.Status status);
 
   boolean existsByEventIdAndStatus(UUID eventId, Booking.Status status);
