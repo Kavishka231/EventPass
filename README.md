@@ -11,7 +11,7 @@ The backend now includes:
 - Redis TTL locks plus PostgreSQL row and advisory locks, optimistic versions, server-side pricing, user-scoped request-bound booking idempotency, provider-enforced same-key charge/refund replay, durable payment and refund lifecycles with guarded transitions, concurrency-safe cancellation, seat resale, expiration, and cryptographically secure tickets;
 - versioned event envelopes, transactional outbox events with PostgreSQL `SKIP LOCKED` claiming, persisted exponential retries, explicitly provisioned Kafka topics, bounded consumer retries with dead-letter topics, atomic idempotent customer-notification creation, durable delivery state, and authenticated read APIs;
 - a uniform API error contract, explicit CORS and security headers, request/correlation IDs, production JSON logs, Redis rate limits, permissioned Prometheus metrics for booking/payment/refund outcomes, cancellation, expiration, outbox backlog, Kafka publication failures, and notification failures, plus PostgreSQL/Redis/Kafka readiness indicators;
-- bounded, sortable pagination for event, booking, ticket, administrator-user, and notification collections;
+- bounded, sortable pagination for event, booking, ticket, organizer-owned event booking reports, administrator-user, and notification collections;
 - projection-based booking and ticket history queries with bulk seat lookup and matching PostgreSQL indexes, avoiding page-size-dependent lazy-loading queries;
 - HTTP contract integration coverage for booking response bodies and statuses, validation, authorization, bounded pagination, and standardized errors;
 - authentication API integration coverage for registration, duplicate email handling, login, inactive accounts, refresh rotation, logout, and token replay;

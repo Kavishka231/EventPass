@@ -33,6 +33,27 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
       countQuery = "select count(booking) from Booking booking where booking.user.id = :userId")
   Page<BookingListRow> findListRowsByUserId(@Param("userId") UUID userId, Pageable pageable);
 
+  @Query(
+      value =
+          """
+          select new com.eventpass.booking.EventBookingReportRow(
+            booking.id,
+            booking.bookingReference,
+            booking.user.id,
+            booking.user.email,
+            booking.user.firstName,
+            booking.user.lastName,
+            booking.status,
+            booking.totalAmount,
+            booking.currency,
+            booking.createdAt)
+          from Booking booking
+          where booking.event.id = :eventId
+          """,
+      countQuery = "select count(booking) from Booking booking where booking.event.id = :eventId")
+  Page<EventBookingReportRow> findReportRowsByEventId(
+      @Param("eventId") UUID eventId, Pageable pageable);
+
   long countByStatus(Booking.Status status);
 
   boolean existsByEventIdAndStatus(UUID eventId, Booking.Status status);
