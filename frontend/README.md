@@ -14,9 +14,12 @@ The frontend consumes the backend under `/api/v1`. Backend authorization, availa
 - Light-first design tokens with compatible dark-surface overrides
 - Responsive typography, spacing, radius, elevation, focus, and motion foundations
 - Reusable buttons, form controls, surfaces, status feedback, dialog, toast, and layout primitives
-- A temporary component-preview route at `/`
+- Responsive public, customer, organizer, administrator, and admission shells
+- Declarative route groups with UX-only session and role guards
+- Accessible desktop navigation, modal mobile navigation, skip links, and public footer
+- Semantic placeholders for every planned route plus polished `403` and `404` states
 
-The preview is not the EventPass homepage. It exists only to verify the shared visual foundation until product pages replace it.
+Route placeholders prove the application hierarchy without implementing product functionality. Authentication, event discovery, booking, ticketing, notifications, admission scanning, and management features remain planned.
 
 See [DESIGN.md](DESIGN.md) for the implemented visual language and component guidance.
 
@@ -48,10 +51,12 @@ Automated frontend testing is planned but is not configured yet. There is curren
 frontend/
 |-- src/
 |   |-- app/          Application composition
-|   |-- components/   Reusable layout and UI primitives
+|   |-- components/   Reusable layout, navigation, and UI primitives
+|   |-- features/     Product modules, currently the session integration contract
+|   |-- layouts/      Public and protected workspace shells
 |   |-- lib/          Framework-independent helpers and environment access
 |   |-- pages/        Route-level screens
-|   |-- routes/       Router configuration
+|   |-- routes/       Route hierarchy and UX-only access guards
 |   `-- styles/       Tokens, base rules, components, and responsive layout
 |-- .env.example
 |-- eslint.config.js
