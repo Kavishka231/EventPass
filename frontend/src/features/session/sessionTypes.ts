@@ -1,4 +1,6 @@
-export type UserRole = 'CUSTOMER' | 'ORGANIZER' | 'ADMIN';
+import type { UserRole } from '../../types/shared';
+
+export type { UserRole };
 export type SessionStatus = 'loading' | 'authenticated' | 'unauthenticated';
 
 export interface UserSession {

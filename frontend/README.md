@@ -18,10 +18,15 @@ The frontend consumes the backend under `/api/v1`. Backend authorization, availa
 - Declarative route groups with UX-only session and role guards
 - Accessible desktop navigation, modal mobile navigation, skip links, and public footer
 - Semantic placeholders for every planned route plus polished `403` and `404` states
+- Central API transport with runtime response decoding, timeouts, cancellation, and typed safe errors
+- Request/correlation ID propagation and rate-limit response metadata
+- Backend-derived domain and Spring pagination transport types
+- TanStack Query provider, transient-failure retry policy, and stable resource-key conventions
 
 Route placeholders prove the application hierarchy without implementing product functionality. Authentication, event discovery, booking, ticketing, notifications, admission scanning, and management features remain planned.
 
 See [DESIGN.md](DESIGN.md) for the implemented visual language and component guidance.
+See [API.md](API.md) for API configuration, transport, errors, pagination, authentication integration, and server-state conventions.
 
 ## Local development
 
