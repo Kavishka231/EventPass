@@ -12,10 +12,11 @@ export function useEvents(parameters: EventSearchParameters) {
   });
 }
 
-export function useEvent(eventId: string) {
+export function useEvent(eventId: string, enabled = true) {
   return useQuery({
     queryKey: queryKeys.events.detail(eventId),
     queryFn: () => eventService.get(eventId),
+    enabled,
     staleTime: 60_000,
   });
 }

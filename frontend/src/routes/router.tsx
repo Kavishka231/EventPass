@@ -2,6 +2,7 @@ import { createBrowserRouter } from 'react-router-dom';
 
 import { PublicShell, WorkspaceShell } from '../layouts';
 import { LoginPage, RegistrationPage } from '../pages/AuthenticationPage';
+import { CheckoutPage } from '../pages/CheckoutPage';
 import { EventDiscoveryPage } from '../pages/EventDiscoveryPage';
 import { EventDetailsPage } from '../pages/EventDetailsPage';
 import { HomePage } from '../pages/HomePage';
@@ -41,6 +42,7 @@ export const applicationRoutes = {
     '/checkout',
     '/bookings',
     '/bookings/:bookingId',
+    '/bookings/:bookingId/confirmation',
     '/tickets',
     '/notifications',
   ],
@@ -106,13 +108,7 @@ export const router = createBrowserRouter([
     children: [
       {
         path: 'checkout',
-        element: (
-          <PlaceholderPage
-            group="Booking"
-            title="Checkout"
-            description="Idempotent booking and payment checkout will be implemented in Commit 10."
-          />
-        ),
+        element: <CheckoutPage />,
       },
       {
         path: 'bookings',
@@ -131,6 +127,16 @@ export const router = createBrowserRouter([
             group="Customer"
             title="Booking details"
             description="Booking details and cancellation controls will be implemented later."
+          />
+        ),
+      },
+      {
+        path: 'bookings/:bookingId/confirmation',
+        element: (
+          <PlaceholderPage
+            group="Booking"
+            title="Booking received"
+            description="Complete confirmation details will be implemented in Commit 11."
           />
         ),
       },

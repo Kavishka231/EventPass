@@ -86,7 +86,13 @@ The default page size is 20 and the backend maximum is 100. `paginatedResponseDe
 - permanent `400`, `401`, `403`, `404`, and `409` responses are not retried;
 - mutations are not retried automatically.
 
-`queryKeys` establishes stable conventions for real event, venue, booking, ticket, notification, organizer-report, and administrator resources. Feature hooks are intentionally deferred to their product branches.
+`queryKeys` establishes stable conventions for real event, venue, booking, ticket, notification, organizer-report, and administrator resources.
+
+## Booking creation
+
+The booking feature service uses the central client for authenticated `POST /bookings` requests and strictly decodes the booking response. The checkout mutation sends an `Idempotency-Key` UUID with the backend request fields only; browser price estimates are never submitted as authoritative values. Mutations do not retry automatically, while a deliberate retry of an uncertain outcome preserves the same key. Successful creation invalidates the related booking, event, and inventory query families.
+
+Checkout handles the backend's `SEAT_UNAVAILABLE`, `EVENT_NOT_BOOKABLE`, `PAYMENT_FAILED`, `PAYMENT_OUTCOME_UNKNOWN`, `IDEMPOTENCY_PAYLOAD_MISMATCH`, and rate-limit contracts without exposing raw provider or server details.
 
 ## Actual backend areas represented
 
