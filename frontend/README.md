@@ -22,8 +22,10 @@ The frontend consumes the backend under `/api/v1`. Backend authorization, availa
 - Request/correlation ID propagation and rate-limit response metadata
 - Backend-derived domain and Spring pagination transport types
 - TanStack Query provider, transient-failure retry policy, and stable resource-key conventions
+- Customer login and registration forms connected to the backend authentication API
+- Client validation, safe authentication errors, accessible submission states, and duplicate-request protection
 
-Route placeholders prove the application hierarchy without implementing product functionality. Authentication, event discovery, booking, ticketing, notifications, admission scanning, and management features remain planned.
+Route placeholders prove the remaining application hierarchy without implementing later product functionality. Authentication credentials are currently handled only by the immediate login and registration interactions; session restoration, refresh, logout, and protected-session lifecycle remain intentionally deferred to the next authentication milestone. Event discovery, booking, ticketing, notifications, admission scanning, and management features remain planned.
 
 See [DESIGN.md](DESIGN.md) for the implemented visual language and component guidance.
 See [API.md](API.md) for API configuration, transport, errors, pagination, authentication integration, and server-state conventions.
@@ -57,7 +59,7 @@ frontend/
 |-- src/
 |   |-- app/          Application composition
 |   |-- components/   Reusable layout, navigation, and UI primitives
-|   |-- features/     Product modules, currently the session integration contract
+|   |-- features/     Product modules, including authentication API operations and session contracts
 |   |-- layouts/      Public and protected workspace shells
 |   |-- lib/          Framework-independent helpers and environment access
 |   |-- pages/        Route-level screens

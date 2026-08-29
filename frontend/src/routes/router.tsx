@@ -1,6 +1,7 @@
 import { createBrowserRouter } from 'react-router-dom';
 
 import { PublicShell, WorkspaceShell } from '../layouts';
+import { LoginPage, RegistrationPage } from '../pages/AuthenticationPage';
 import { PlaceholderPage } from '../pages/PlaceholderPage';
 import { NotFoundPage, UnauthorizedPage } from '../pages/SystemPage';
 import { RouteGuard } from './RouteGuard';
@@ -80,23 +81,11 @@ export const router = createBrowserRouter([
       },
       {
         path: 'login',
-        element: (
-          <PlaceholderPage
-            group="Authentication"
-            title="Log in"
-            description="Authentication will be connected to the EventPass API in the authentication feature."
-          />
-        ),
+        element: <LoginPage />,
       },
       {
         path: 'register',
-        element: (
-          <PlaceholderPage
-            group="Authentication"
-            title="Create an account"
-            description="Customer registration will be implemented in the authentication feature."
-          />
-        ),
+        element: <RegistrationPage />,
       },
       { path: 'unauthorized', element: <UnauthorizedPage /> },
       { path: '*', element: <NotFoundPage /> },
