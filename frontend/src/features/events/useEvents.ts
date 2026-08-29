@@ -11,3 +11,22 @@ export function useEvents(parameters: EventSearchParameters) {
     placeholderData: keepPreviousData,
   });
 }
+
+export function useEvent(eventId: string) {
+  return useQuery({
+    queryKey: queryKeys.events.detail(eventId),
+    queryFn: () => eventService.get(eventId),
+    staleTime: 60_000,
+  });
+}
+
+export function useEventSeats(eventId: string, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.events.seats(eventId),
+    queryFn: () => eventService.seats(eventId),
+    enabled,
+    staleTime: 10_000,
+    refetchInterval: 15_000,
+    refetchIntervalInBackground: false,
+  });
+}

@@ -3,7 +3,11 @@ import {
   objectResponseDecoder,
   paginatedResponseDecoder,
 } from '../../services/api';
-import type { EventResponse, EventSearchParameters } from '../../types';
+import type {
+  EventResponse,
+  EventSearchParameters,
+  EventSeatResponse,
+} from '../../types';
 
 function requiredString(object: Record<string, unknown>, field: string) {
   const value = object[field];
@@ -42,6 +46,38 @@ function eventResponseDecoder(value: unknown): EventResponse {
   };
 }
 
+function seatResponseDecoder(value: unknown): EventSeatResponse {
+  const object = objectResponseDecoder(value);
+  const type = requiredString(object, 'type');
+  const availability = requiredString(object, 'availability');
+  const price = object.price;
+  if (!['REGULAR', 'PREMIUM', 'VIP'].includes(type)) {
+    throw new Error('Expected a supported seat type.');
+  }
+  if (!['AVAILABLE', 'HELD', 'SOLD', 'BLOCKED'].includes(availability)) {
+    throw new Error('Expected a supported seat availability.');
+  }
+  if (typeof price !== 'number' || !Number.isFinite(price) || price < 0) {
+    throw new Error('Expected price to be a non-negative number.');
+  }
+
+  return {
+    id: requiredString(object, 'id'),
+    section: requiredString(object, 'section'),
+    row: requiredString(object, 'row'),
+    number: requiredString(object, 'number'),
+    type: type as EventSeatResponse['type'],
+    price,
+    availability: availability as EventSeatResponse['availability'],
+  };
+}
+
+function seatListDecoder(value: unknown): EventSeatResponse[] {
+  if (!Array.isArray(value))
+    throw new Error('Expected seat inventory to be an array.');
+  return value.map(seatResponseDecoder);
+}
+
 export const eventService = {
   async list(parameters: EventSearchParameters) {
     const response = await apiClient.get(
@@ -59,6 +95,26 @@ export const eventService = {
           sort: parameters.sort,
         },
       },
+    );
+    return response.data;
+  },
+
+  async get(eventId: string) {
+    const response = await apiClient.get(
+      `/events/${eventId}`,
+      eventResponseDecoder,
+      {
+        authentication: 'omit',
+      },
+    );
+    return response.data;
+  },
+
+  async seats(eventId: string) {
+    const response = await apiClient.get(
+      `/events/${eventId}/seats`,
+      seatListDecoder,
+      { authentication: 'omit' },
     );
     return response.data;
   },

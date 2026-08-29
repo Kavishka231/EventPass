@@ -3,6 +3,7 @@ import { createBrowserRouter } from 'react-router-dom';
 import { PublicShell, WorkspaceShell } from '../layouts';
 import { LoginPage, RegistrationPage } from '../pages/AuthenticationPage';
 import { EventDiscoveryPage } from '../pages/EventDiscoveryPage';
+import { EventDetailsPage } from '../pages/EventDetailsPage';
 import { HomePage } from '../pages/HomePage';
 import { PlaceholderPage } from '../pages/PlaceholderPage';
 import { NotFoundPage, UnauthorizedPage } from '../pages/SystemPage';
@@ -68,6 +69,20 @@ export const router = createBrowserRouter([
       {
         path: 'events',
         element: <EventDiscoveryPage />,
+      },
+      {
+        path: 'events/:eventId',
+        element: <EventDetailsPage />,
+      },
+      {
+        path: 'events/:eventId/seats',
+        element: (
+          <PlaceholderPage
+            group="Booking"
+            title="Seat selection"
+            description="Interactive seat selection will be implemented in the next customer booking feature."
+          />
+        ),
       },
       {
         path: 'login',

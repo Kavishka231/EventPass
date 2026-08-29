@@ -28,8 +28,9 @@ The frontend consumes the backend under `/api/v1`. Backend authorization, availa
 - Role-aware protected routes, safe return navigation, logout, session-expiration messaging, and authenticated cache isolation
 - Editorial landing experience with live upcoming events from the public backend catalogue
 - Event discovery with backend filtering, sorting, URL-backed pagination, and complete loading, empty, updating, and error states
+- Public event details with backend seat-price bands, periodically refreshed availability snapshots, bookability-aware actions, and responsive booking presentation
 
-Route placeholders prove the remaining application hierarchy without implementing later product functionality. Authentication credentials stay only in memory because the backend does not provide an `HttpOnly` refresh cookie; a full browser reload therefore returns to an unauthenticated state instead of persisting sensitive tokens in browser storage. Event detail, seat selection, booking, checkout, ticketing, notifications, admission scanning, and management features remain planned.
+Route placeholders prove the remaining application hierarchy without implementing later product functionality. Authentication credentials stay only in memory because the backend does not provide an `HttpOnly` refresh cookie; a full browser reload therefore returns to an unauthenticated state instead of persisting sensitive tokens in browser storage. Seat selection, booking, checkout, ticketing, notifications, admission scanning, and management features remain planned.
 
 See [DESIGN.md](DESIGN.md) for the implemented visual language and component guidance.
 See [API.md](API.md) for API configuration, transport, errors, pagination, authentication integration, and server-state conventions.

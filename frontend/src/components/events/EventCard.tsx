@@ -1,5 +1,6 @@
 import { Badge, Card } from '../ui';
 import type { EventResponse } from '../../types';
+import { Link } from 'react-router-dom';
 
 const dateFormatter = new Intl.DateTimeFormat(undefined, {
   dateStyle: 'medium',
@@ -39,6 +40,9 @@ export function EventCard({ event }: { event: EventResponse }) {
             </dd>
           </div>
         </dl>
+        <Link className="event-card-link" to={`/events/${event.id}`}>
+          View event <span aria-hidden="true">→</span>
+        </Link>
       </div>
     </Card>
   );
