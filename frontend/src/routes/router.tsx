@@ -5,6 +5,7 @@ import { LoginPage, RegistrationPage } from '../pages/AuthenticationPage';
 import { EventDiscoveryPage } from '../pages/EventDiscoveryPage';
 import { EventDetailsPage } from '../pages/EventDetailsPage';
 import { HomePage } from '../pages/HomePage';
+import { SeatSelectionPage } from '../pages/SeatSelectionPage';
 import { PlaceholderPage } from '../pages/PlaceholderPage';
 import { NotFoundPage, UnauthorizedPage } from '../pages/SystemPage';
 import { RouteGuard } from './RouteGuard';
@@ -36,7 +37,13 @@ const admissionNavigation = [
 
 export const applicationRoutes = {
   public: ['/', '/events', '/login', '/register'],
-  customer: ['/bookings', '/bookings/:bookingId', '/tickets', '/notifications'],
+  customer: [
+    '/checkout',
+    '/bookings',
+    '/bookings/:bookingId',
+    '/tickets',
+    '/notifications',
+  ],
   organizer: [
     '/organizer',
     '/organizer/events',
@@ -76,13 +83,7 @@ export const router = createBrowserRouter([
       },
       {
         path: 'events/:eventId/seats',
-        element: (
-          <PlaceholderPage
-            group="Booking"
-            title="Seat selection"
-            description="Interactive seat selection will be implemented in the next customer booking feature."
-          />
-        ),
+        element: <SeatSelectionPage />,
       },
       {
         path: 'login',
@@ -103,6 +104,16 @@ export const router = createBrowserRouter([
       </RouteGuard>
     ),
     children: [
+      {
+        path: 'checkout',
+        element: (
+          <PlaceholderPage
+            group="Booking"
+            title="Checkout"
+            description="Idempotent booking and payment checkout will be implemented in Commit 10."
+          />
+        ),
+      },
       {
         path: 'bookings',
         element: (
