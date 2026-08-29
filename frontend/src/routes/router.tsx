@@ -2,6 +2,8 @@ import { createBrowserRouter } from 'react-router-dom';
 
 import { PublicShell, WorkspaceShell } from '../layouts';
 import { LoginPage, RegistrationPage } from '../pages/AuthenticationPage';
+import { EventDiscoveryPage } from '../pages/EventDiscoveryPage';
+import { HomePage } from '../pages/HomePage';
 import { PlaceholderPage } from '../pages/PlaceholderPage';
 import { NotFoundPage, UnauthorizedPage } from '../pages/SystemPage';
 import { RouteGuard } from './RouteGuard';
@@ -61,23 +63,11 @@ export const router = createBrowserRouter([
     children: [
       {
         index: true,
-        element: (
-          <PlaceholderPage
-            group="Public"
-            title="EventPass home"
-            description="The public homepage will be implemented in a later product feature."
-          />
-        ),
+        element: <HomePage />,
       },
       {
         path: 'events',
-        element: (
-          <PlaceholderPage
-            group="Public"
-            title="Event discovery"
-            description="Event discovery will be implemented in the event-discovery feature."
-          />
-        ),
+        element: <EventDiscoveryPage />,
       },
       {
         path: 'login',
