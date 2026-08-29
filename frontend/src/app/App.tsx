@@ -6,10 +6,10 @@ import { ServerStateProvider } from '../services/query';
 
 export function App() {
   return (
-    <SessionProvider>
-      <ServerStateProvider>
+    <ServerStateProvider>
+      <SessionProvider>
         <RouterProvider router={router} />
-      </ServerStateProvider>
-    </SessionProvider>
+      </SessionProvider>
+    </ServerStateProvider>
   );
 }

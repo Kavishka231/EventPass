@@ -1,7 +1,7 @@
-import { Outlet } from 'react-router-dom';
+import { Outlet, useNavigate } from 'react-router-dom';
 
 import { Container } from '../components/layout';
-import { Badge } from '../components/ui';
+import { Badge, Button } from '../components/ui';
 import {
   Brand,
   MobileNavigation,
@@ -16,7 +16,14 @@ export interface WorkspaceShellProps {
 }
 
 export function WorkspaceShell({ label, navigation }: WorkspaceShellProps) {
-  const { session } = useSession();
+  const navigate = useNavigate();
+  const sessionController = useSession();
+  const { session } = sessionController;
+
+  async function signOut() {
+    await sessionController.logout();
+    await navigate('/login', { replace: true });
+  }
 
   return (
     <div className="application-shell workspace-shell">
@@ -38,12 +45,21 @@ export function WorkspaceShell({ label, navigation }: WorkspaceShellProps) {
               <NavigationLinks items={navigation} />
             </nav>
             <div className="workspace-account" aria-label="Current account">
-              <span>{session?.displayName}</span>
               {session ? (
                 <Badge tone="accent">{session.role.toLowerCase()}</Badge>
               ) : null}
+              <Button
+                size="small"
+                variant="ghost"
+                onClick={() => void signOut()}
+              >
+                Log out
+              </Button>
             </div>
-            <MobileNavigation items={navigation} />
+            <MobileNavigation
+              items={navigation}
+              sessionAction={{ label: 'Log out', onAction: signOut }}
+            />
           </div>
         </Container>
       </header>

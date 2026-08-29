@@ -13,9 +13,9 @@ export function RouteGuard({
   roles?: UserRole[];
 }) {
   const location = useLocation();
-  const { session, status } = useSession();
+  const { session, sessionExpired, status } = useSession();
 
-  if (status === 'loading') {
+  if (status === 'initializing' || status === 'refreshing') {
     return (
       <main className="route-loading" aria-label="Loading account">
         <Container size="small">
@@ -29,9 +29,10 @@ export function RouteGuard({
 
   if (status !== 'authenticated' || !session) {
     const returnTo = `${location.pathname}${location.search}`;
+    const reason = sessionExpired ? '&reason=session-expired' : '';
     return (
       <Navigate
-        to={`/login?returnTo=${encodeURIComponent(returnTo)}`}
+        to={`/login?returnTo=${encodeURIComponent(returnTo)}${reason}`}
         replace
       />
     );

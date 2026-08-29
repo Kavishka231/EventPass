@@ -120,6 +120,7 @@ export class ApiClient {
     path: string,
     decoder: ResponseDecoder<T>,
     configuration: InternalRequestConfiguration = {},
+    authenticationRetried = false,
   ): Promise<ApiResponse<T>> {
     const url = this.buildUrl(path, configuration.query);
     const requestId = configuration.requestId ?? generatedRequestId();
@@ -142,7 +143,10 @@ export class ApiClient {
 
     let accessToken: string | null | undefined;
     try {
-      accessToken = await this.authentication?.getAccessToken();
+      accessToken =
+        configuration.authentication === 'omit'
+          ? null
+          : await this.authentication?.getAccessToken();
     } catch (error) {
       throw new ApiError(
         'Authentication credentials could not be prepared.',
@@ -197,9 +201,18 @@ export class ApiClient {
           path,
         });
 
-        if (response.status === 401 && this.authentication?.onUnauthorized) {
+        if (
+          response.status === 401 &&
+          !authenticationRetried &&
+          configuration.authentication !== 'omit' &&
+          this.authentication?.onUnauthorized
+        ) {
           try {
-            await this.authentication.onUnauthorized(apiError);
+            const recovered =
+              await this.authentication.onUnauthorized(apiError);
+            if (recovered) {
+              return this.request(method, path, decoder, configuration, true);
+            }
           } catch {
             // Session cleanup must not replace the authoritative API failure.
           }

@@ -1,6 +1,6 @@
 import { useMutation } from '@tanstack/react-query';
 import { type FormEvent, useId, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 
 import { Container, Section } from '../components/layout';
 import { Alert, Button, FieldError, Input, Label } from '../components/ui';
@@ -11,8 +11,28 @@ import {
   validateLogin,
   validateRegistration,
 } from '../features/auth';
+import { useSession } from '../features/session';
 
 type FieldErrors<T> = Partial<Record<keyof T, string>>;
+
+function safeReturnTo(value: string | null, role: string) {
+  const fallback =
+    role === 'ADMIN'
+      ? '/admin'
+      : role === 'ORGANIZER'
+        ? '/organizer'
+        : '/bookings';
+  if (!value || !value.startsWith('/') || value.startsWith('//'))
+    return fallback;
+  try {
+    const url = new URL(value, window.location.origin);
+    return url.origin === window.location.origin
+      ? `${url.pathname}${url.search}${url.hash}`
+      : fallback;
+  } catch {
+    return fallback;
+  }
+}
 
 function FormField({
   children,
@@ -60,6 +80,9 @@ function AuthenticationLayout({
 }
 
 export function LoginPage() {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const sessionController = useSession();
   const emailId = useId();
   const passwordId = useId();
   const submitting = useRef(false);
@@ -83,10 +106,17 @@ export function LoginPage() {
 
     submitting.current = true;
     try {
-      await mutation.mutateAsync({
+      const response = await mutation.mutateAsync({
         email: values.email.trim().toLowerCase(),
         password: values.password,
       });
+      await sessionController.authenticate(response);
+      await navigate(
+        safeReturnTo(searchParams.get('returnTo'), response.role),
+        {
+          replace: true,
+        },
+      );
     } catch (error) {
       setFormError(presentAuthenticationError(error).message);
     } finally {
@@ -99,10 +129,9 @@ export function LoginPage() {
       title="Welcome back"
       description="Sign in to continue to your events."
     >
-      {mutation.isSuccess ? (
-        <Alert title="Sign-in successful" tone="success">
-          Your credentials were accepted. Secure session activation will be
-          completed in the next authentication milestone.
+      {searchParams.get('reason') === 'session-expired' ? (
+        <Alert title="Your session has expired" tone="warning">
+          Please sign in again to continue.
         </Alert>
       ) : null}
       {formError ? (
@@ -176,6 +205,8 @@ export function LoginPage() {
 }
 
 export function RegistrationPage() {
+  const navigate = useNavigate();
+  const sessionController = useSession();
   const ids = {
     firstName: useId(),
     lastName: useId(),
@@ -214,12 +245,14 @@ export function RegistrationPage() {
 
     submitting.current = true;
     try {
-      await mutation.mutateAsync({
+      const response = await mutation.mutateAsync({
         firstName: values.firstName.trim(),
         lastName: values.lastName.trim(),
         email: values.email.trim().toLowerCase(),
         password: values.password,
       });
+      await sessionController.authenticate(response);
+      await navigate(safeReturnTo(null, response.role), { replace: true });
     } catch (error) {
       const presentation = presentAuthenticationError(error);
       if (presentation.field === 'email') {
@@ -233,31 +266,6 @@ export function RegistrationPage() {
     } finally {
       submitting.current = false;
     }
-  }
-
-  if (mutation.isSuccess) {
-    return (
-      <AuthenticationLayout
-        title="Your account is ready"
-        description="EventPass accepted your registration and issued your initial credentials."
-      >
-        <div className="auth-success" role="status">
-          <h2>Account created successfully</h2>
-          <p>
-            Continue to sign in. Complete session restoration and refresh will
-            be connected in the next authentication milestone.
-          </p>
-          <Link
-            className="button link-button"
-            data-size="large"
-            data-variant="primary"
-            to="/login"
-          >
-            Sign in
-          </Link>
-        </div>
-      </AuthenticationLayout>
-    );
   }
 
   return (

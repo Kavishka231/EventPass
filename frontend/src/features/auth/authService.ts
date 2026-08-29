@@ -32,7 +32,7 @@ export const authService = {
       '/auth/login',
       request,
       authResponseDecoder,
-      { signal },
+      { authentication: 'omit', signal },
     );
     return response.data;
   },
@@ -42,8 +42,24 @@ export const authService = {
       '/auth/register',
       request,
       authResponseDecoder,
-      { signal },
+      { authentication: 'omit', signal },
     );
     return response.data;
+  },
+
+  async refresh(refreshToken: string) {
+    const response = await apiClient.post(
+      '/auth/refresh',
+      { refreshToken },
+      authResponseDecoder,
+      { authentication: 'omit' },
+    );
+    return response.data;
+  },
+
+  async logout(refreshToken: string) {
+    await apiClient.post('/auth/logout', { refreshToken }, () => undefined, {
+      authentication: 'omit',
+    });
   },
 };

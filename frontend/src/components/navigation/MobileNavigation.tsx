@@ -8,12 +8,14 @@ interface MobileNavigationProps {
   items: NavigationItem[];
   primaryAction?: { label: string; to: string };
   secondaryAction?: { label: string; to: string };
+  sessionAction?: { label: string; onAction: () => void | Promise<void> };
 }
 
 export function MobileNavigation({
   items,
   primaryAction,
   secondaryAction,
+  sessionAction,
 }: MobileNavigationProps) {
   const [open, setOpen] = useState(false);
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -81,7 +83,7 @@ export function MobileNavigation({
           <nav aria-label="Mobile navigation">
             <NavigationLinks items={items} onNavigate={() => close()} />
           </nav>
-          {primaryAction || secondaryAction ? (
+          {primaryAction || secondaryAction || sessionAction ? (
             <div className="mobile-navigation-actions">
               {secondaryAction ? (
                 <Link
@@ -104,6 +106,17 @@ export function MobileNavigation({
                 >
                   {primaryAction.label}
                 </Link>
+              ) : null}
+              {sessionAction ? (
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    close();
+                    void sessionAction.onAction();
+                  }}
+                >
+                  {sessionAction.label}
+                </Button>
               ) : null}
             </div>
           ) : null}

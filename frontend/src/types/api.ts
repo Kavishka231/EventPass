@@ -49,11 +49,12 @@ export interface RequestConfiguration {
   timeoutMs?: number;
   requestId?: string;
   correlationId?: string;
+  authentication?: 'include' | 'omit';
 }
 
 export interface AuthenticationTransport {
   getAccessToken(): string | null | Promise<string | null>;
-  onUnauthorized?(error: ApiError): void | Promise<void>;
+  onUnauthorized?(error: ApiError): boolean | Promise<boolean>;
 }
 
 export class ApiError extends Error {
