@@ -2,6 +2,9 @@ import { createBrowserRouter } from 'react-router-dom';
 
 import { PublicShell, WorkspaceShell } from '../layouts';
 import { LoginPage, RegistrationPage } from '../pages/AuthenticationPage';
+import { BookingConfirmationPage } from '../pages/BookingConfirmationPage';
+import { BookingDetailsPage } from '../pages/BookingDetailsPage';
+import { BookingHistoryPage } from '../pages/BookingHistoryPage';
 import { CheckoutPage } from '../pages/CheckoutPage';
 import { EventDiscoveryPage } from '../pages/EventDiscoveryPage';
 import { EventDetailsPage } from '../pages/EventDetailsPage';
@@ -112,33 +115,15 @@ export const router = createBrowserRouter([
       },
       {
         path: 'bookings',
-        element: (
-          <PlaceholderPage
-            group="Customer"
-            title="My bookings"
-            description="Booking history is planned for the customer booking feature."
-          />
-        ),
+        element: <BookingHistoryPage />,
       },
       {
         path: 'bookings/:bookingId',
-        element: (
-          <PlaceholderPage
-            group="Customer"
-            title="Booking details"
-            description="Booking details and cancellation controls will be implemented later."
-          />
-        ),
+        element: <BookingDetailsPage />,
       },
       {
         path: 'bookings/:bookingId/confirmation',
-        element: (
-          <PlaceholderPage
-            group="Booking"
-            title="Booking received"
-            description="Complete confirmation details will be implemented in Commit 11."
-          />
-        ),
+        element: <BookingConfirmationPage />,
       },
       {
         path: 'tickets',

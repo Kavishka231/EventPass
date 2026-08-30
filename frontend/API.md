@@ -94,6 +94,8 @@ The booking feature service uses the central client for authenticated `POST /boo
 
 Checkout handles the backend's `SEAT_UNAVAILABLE`, `EVENT_NOT_BOOKABLE`, `PAYMENT_FAILED`, `PAYMENT_OUTCOME_UNKNOWN`, `IDEMPOTENCY_PAYLOAD_MISMATCH`, and rate-limit contracts without exposing raw provider or server details.
 
+Customer booking management uses authenticated `GET /bookings`, `GET /bookings/{bookingId}`, and `POST /bookings/{bookingId}/cancel`. Lists explicitly request `createdAt,desc`, page size 20, and preserve page state in the URL. Cancellation has no client-generated financial payload and consumes the backend's empty `204` response. Success invalidates all customer booking queries plus affected ticket and event data; `BOOKING_NOT_CANCELLABLE`, `PAYMENT_NOT_REFUNDABLE`, `REFUND_PENDING`, `REFUND_FAILED`, and `REFUND_OUTCOME_UNKNOWN` remain authoritative workflow results.
+
 ## Actual backend areas represented
 
 The shared types are derived from the current authentication, event, venue, seat/inventory, booking, ticket/admission, notification, organizer booking-report, administrator user/statistics/booking, pagination, security, and error controllers. There are no frontend payment or refund service models because the backend exposes those operations through booking workflows rather than public payment/refund endpoints.

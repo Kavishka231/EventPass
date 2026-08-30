@@ -998,6 +998,214 @@
   max-width: 48rem;
 }
 
+.booking-management-section {
+  min-height: 70vh;
+  background: var(--color-background);
+}
+
+.booking-management-heading {
+  display: grid;
+  gap: var(--space-2);
+  max-width: 48rem;
+  margin-block-end: var(--space-8);
+}
+
+.booking-management-heading h1,
+.booking-management-heading p,
+.booking-confirmation-message h1,
+.booking-confirmation-message p {
+  margin: 0;
+}
+
+.booking-management-heading > p:last-child,
+.booking-confirmation-message > p:last-child {
+  color: var(--color-text-secondary);
+}
+
+.booking-history-list {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.booking-history-card {
+  display: grid;
+  gap: var(--space-5);
+  padding: var(--space-6);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  color: var(--color-text);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-low);
+  text-decoration: none;
+  transition:
+    border-color var(--duration-fast) var(--ease-standard),
+    transform var(--duration-fast) var(--ease-standard);
+}
+
+.booking-history-card:hover {
+  border-color: var(--color-accent);
+  transform: translateY(-1px);
+}
+
+.booking-history-card:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.booking-history-card-heading,
+.booking-history-summary,
+.booking-overview-heading,
+.booking-overview-actions,
+.booking-cancellation-panel {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.booking-history-card-heading h2,
+.booking-history-card-heading p,
+.booking-overview-heading h2,
+.booking-overview-heading p,
+.booking-cancellation-panel h2,
+.booking-cancellation-panel p {
+  margin: 0;
+}
+
+.booking-history-meta {
+  display: grid;
+  gap: var(--space-1);
+  color: var(--color-text-secondary);
+}
+
+.booking-history-summary {
+  align-items: baseline;
+  padding-block-start: var(--space-4);
+  border-top: 1px solid var(--color-border);
+}
+
+.booking-history-summary span {
+  color: var(--color-text-secondary);
+}
+
+.booking-history-skeleton {
+  min-height: 13rem;
+  border-radius: var(--radius-card);
+}
+
+.booking-page-skeleton {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.booking-page-skeleton > * {
+  min-height: 6rem;
+}
+
+.booking-confirmation-state {
+  max-width: 48rem;
+  margin-block-end: var(--space-8);
+}
+
+.booking-confirmation-message {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.booking-overview {
+  margin-block: var(--space-6);
+}
+
+.booking-overview-main {
+  display: grid;
+  gap: var(--space-7);
+}
+
+.booking-overview-heading {
+  align-items: flex-start;
+}
+
+.booking-facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-5);
+  padding-block: var(--space-6);
+  margin: 0;
+  border-block: 1px solid var(--color-border);
+}
+
+.booking-facts div {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.booking-facts dt {
+  color: var(--color-text-muted);
+  font-size: var(--font-caption-size);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.booking-facts dd {
+  margin: 0;
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.booking-seat-details h3 {
+  margin-block: 0 var(--space-4);
+}
+
+.booking-seat-details ul {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.booking-seat-details li {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-surface-elevated);
+}
+
+.booking-seat-details li span {
+  overflow-wrap: anywhere;
+  color: var(--color-text-muted);
+  font-size: var(--font-caption-size);
+  text-transform: capitalize;
+}
+
+.booking-overview-actions {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+
+.booking-cancellation-panel {
+  align-items: center;
+  padding: var(--space-6);
+  margin-block-start: var(--space-8);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-panel);
+  background: var(--color-surface);
+}
+
+.booking-cancellation-panel > div {
+  display: grid;
+  gap: var(--space-2);
+  max-width: 44rem;
+}
+
+.booking-cancellation-panel p,
+.booking-cancellation-unavailable {
+  color: var(--color-text-secondary);
+}
+
 @media (max-width: 47.99rem) {
   .home-hero-grid {
     grid-template-columns: 1fr;
@@ -1066,6 +1274,15 @@
     position: static;
   }
 
+  .booking-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .booking-cancellation-panel {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
   .selection-summary {
     display: none;
   }
@@ -1127,5 +1344,23 @@
   .filter-actions {
     display: grid;
     grid-template-columns: 1fr 1fr;
+  }
+
+  .booking-history-card-heading,
+  .booking-history-summary,
+  .booking-overview-heading,
+  .booking-overview-actions {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .booking-facts,
+  .booking-seat-details ul {
+    grid-template-columns: 1fr;
+  }
+
+  .booking-overview-actions .button,
+  .booking-cancellation-panel .button {
+    width: 100%;
   }
 }

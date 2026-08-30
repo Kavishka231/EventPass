@@ -1,5 +1,14 @@
-import { apiClient, objectResponseDecoder } from '../../services/api';
-import type { BookingResponse, CreateBookingRequest } from '../../types';
+import {
+  apiClient,
+  emptyResponseDecoder,
+  objectResponseDecoder,
+  paginatedResponseDecoder,
+} from '../../services/api';
+import type {
+  BookingResponse,
+  CreateBookingRequest,
+  PaginationParameters,
+} from '../../types';
 
 const statuses = new Set<BookingResponse['status']>([
   'PENDING',
@@ -17,7 +26,7 @@ function requiredString(object: Record<string, unknown>, field: string) {
   return value;
 }
 
-function bookingResponseDecoder(value: unknown): BookingResponse {
+export function bookingResponseDecoder(value: unknown): BookingResponse {
   const object = objectResponseDecoder(value);
   const status = requiredString(object, 'status');
   const totalAmount = object.totalAmount;
@@ -66,5 +75,36 @@ export const bookingService = {
       { headers: { 'Idempotency-Key': idempotencyKey } },
     );
     return response.data;
+  },
+
+  async list(parameters: PaginationParameters) {
+    const response = await apiClient.get(
+      '/bookings',
+      paginatedResponseDecoder(bookingResponseDecoder),
+      {
+        query: {
+          page: parameters.page,
+          size: parameters.size,
+          sort: parameters.sort,
+        },
+      },
+    );
+    return response.data;
+  },
+
+  async get(bookingId: string) {
+    const response = await apiClient.get(
+      `/bookings/${bookingId}`,
+      bookingResponseDecoder,
+    );
+    return response.data;
+  },
+
+  async cancel(bookingId: string) {
+    await apiClient.post(
+      `/bookings/${bookingId}/cancel`,
+      undefined,
+      emptyResponseDecoder,
+    );
   },
 };
