@@ -2,9 +2,14 @@ import { createBrowserRouter } from 'react-router-dom';
 
 import { PublicShell, WorkspaceShell } from '../layouts';
 import { LoginPage, RegistrationPage } from '../pages/AuthenticationPage';
+import { BookingConfirmationPage } from '../pages/BookingConfirmationPage';
+import { BookingDetailsPage } from '../pages/BookingDetailsPage';
+import { BookingHistoryPage } from '../pages/BookingHistoryPage';
+import { CheckoutPage } from '../pages/CheckoutPage';
 import { EventDiscoveryPage } from '../pages/EventDiscoveryPage';
 import { EventDetailsPage } from '../pages/EventDetailsPage';
 import { HomePage } from '../pages/HomePage';
+import { SeatSelectionPage } from '../pages/SeatSelectionPage';
 import { PlaceholderPage } from '../pages/PlaceholderPage';
 import { NotFoundPage, UnauthorizedPage } from '../pages/SystemPage';
 import { RouteGuard } from './RouteGuard';
@@ -36,7 +41,14 @@ const admissionNavigation = [
 
 export const applicationRoutes = {
   public: ['/', '/events', '/login', '/register'],
-  customer: ['/bookings', '/bookings/:bookingId', '/tickets', '/notifications'],
+  customer: [
+    '/checkout',
+    '/bookings',
+    '/bookings/:bookingId',
+    '/bookings/:bookingId/confirmation',
+    '/tickets',
+    '/notifications',
+  ],
   organizer: [
     '/organizer',
     '/organizer/events',
@@ -76,13 +88,7 @@ export const router = createBrowserRouter([
       },
       {
         path: 'events/:eventId/seats',
-        element: (
-          <PlaceholderPage
-            group="Booking"
-            title="Seat selection"
-            description="Interactive seat selection will be implemented in the next customer booking feature."
-          />
-        ),
+        element: <SeatSelectionPage />,
       },
       {
         path: 'login',
@@ -104,24 +110,20 @@ export const router = createBrowserRouter([
     ),
     children: [
       {
+        path: 'checkout',
+        element: <CheckoutPage />,
+      },
+      {
         path: 'bookings',
-        element: (
-          <PlaceholderPage
-            group="Customer"
-            title="My bookings"
-            description="Booking history is planned for the customer booking feature."
-          />
-        ),
+        element: <BookingHistoryPage />,
       },
       {
         path: 'bookings/:bookingId',
-        element: (
-          <PlaceholderPage
-            group="Customer"
-            title="Booking details"
-            description="Booking details and cancellation controls will be implemented later."
-          />
-        ),
+        element: <BookingDetailsPage />,
+      },
+      {
+        path: 'bookings/:bookingId/confirmation',
+        element: <BookingConfirmationPage />,
       },
       {
         path: 'tickets',

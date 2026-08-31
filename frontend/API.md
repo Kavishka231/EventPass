@@ -86,7 +86,15 @@ The default page size is 20 and the backend maximum is 100. `paginatedResponseDe
 - permanent `400`, `401`, `403`, `404`, and `409` responses are not retried;
 - mutations are not retried automatically.
 
-`queryKeys` establishes stable conventions for real event, venue, booking, ticket, notification, organizer-report, and administrator resources. Feature hooks are intentionally deferred to their product branches.
+`queryKeys` establishes stable conventions for real event, venue, booking, ticket, notification, organizer-report, and administrator resources.
+
+## Booking creation
+
+The booking feature service uses the central client for authenticated `POST /bookings` requests and strictly decodes the booking response. The checkout mutation sends an `Idempotency-Key` UUID with the backend request fields only; browser price estimates are never submitted as authoritative values. Mutations do not retry automatically, while a deliberate retry of an uncertain outcome preserves the same key. Successful creation invalidates the related booking, event, and inventory query families.
+
+Checkout handles the backend's `SEAT_UNAVAILABLE`, `EVENT_NOT_BOOKABLE`, `PAYMENT_FAILED`, `PAYMENT_OUTCOME_UNKNOWN`, `IDEMPOTENCY_PAYLOAD_MISMATCH`, and rate-limit contracts without exposing raw provider or server details.
+
+Customer booking management uses authenticated `GET /bookings`, `GET /bookings/{bookingId}`, and `POST /bookings/{bookingId}/cancel`. Lists explicitly request `createdAt,desc`, page size 20, and preserve page state in the URL. Cancellation has no client-generated financial payload and consumes the backend's empty `204` response. Success invalidates all customer booking queries plus affected ticket and event data; `BOOKING_NOT_CANCELLABLE`, `PAYMENT_NOT_REFUNDABLE`, `REFUND_PENDING`, `REFUND_FAILED`, and `REFUND_OUTCOME_UNKNOWN` remain authoritative workflow results.
 
 ## Actual backend areas represented
 
