@@ -37,8 +37,9 @@ export const queryKeys = {
   },
   notifications: {
     all: ['notifications'] as const,
+    lists: () => [...queryKeys.notifications.all, 'list'] as const,
     list: (pagination: PaginationParameters) =>
-      [...queryKeys.notifications.all, 'list', pagination] as const,
+      [...queryKeys.notifications.lists(), pagination] as const,
     unreadCount: () =>
       [...queryKeys.notifications.all, 'unread-count'] as const,
   },

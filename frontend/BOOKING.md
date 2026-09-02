@@ -22,7 +22,7 @@ Checkout refreshes the event and inventory, rejects selections that are no longe
 
 A cryptographically generated UUID remains stable for one logical checkout attempt, including manual retry after a timeout, network failure, rate limit, or ambiguous provider result. Only a definitive `PAYMENT_FAILED` result exposes an explicit action that creates a new payment attempt and key. Automatic mutation retries are disabled. Backend access-token refresh may replay the original request once through the shared API client with the same header.
 
-Seat conflicts and unbookable events direct the customer back to refreshed inventory. The mock provider tokens `tok_success`, `tok_fail`, and `tok_unknown` support success, definitive failure, and ambiguous-result verification without collecting real card details. A confirmed response invalidates booking, event-detail, event-list, and seat-inventory queries, then hands off to the protected confirmation route. Tickets and notifications remain later milestones.
+Seat conflicts and unbookable events direct the customer back to refreshed inventory. The mock provider tokens `tok_success`, `tok_fail`, and `tok_unknown` support success, definitive failure, and ambiguous-result verification without collecting real card details. A confirmed response invalidates booking, event-detail, event-list, and seat-inventory queries, then hands off to the protected confirmation route.
 
 ## Confirmation and booking management
 
