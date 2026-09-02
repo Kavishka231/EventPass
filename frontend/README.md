@@ -37,7 +37,7 @@ The frontend consumes the backend under `/api/v1`. Backend authorization, availa
 - Vitest, React Testing Library, user-event, jest-dom, MSW, and axe-core coverage for authentication, session recovery, discovery, booking, ticket security, notifications, and critical accessibility states
 - Playwright Chromium coverage for the register-to-ticket customer journey and inactive-ticket QR secrecy using deterministic mocked backend API contracts
 
-Route placeholders prove the remaining application hierarchy without implementing later product functionality. Authentication credentials stay only in memory because the backend does not provide an `HttpOnly` refresh cookie; a full browser reload therefore returns to an unauthenticated state instead of persisting sensitive tokens in browser storage. Admission scanning and organizer/administrator management features remain planned.
+Route placeholders prove the remaining application hierarchy without implementing later product functionality. Access tokens stay only in memory. Browser sessions are restored through a rotating refresh token held in a scoped `HttpOnly` cookie; refresh and logout use the credentialed API transport and a CSRF cookie/header pair. No authentication token is stored in local storage, session storage, or IndexedDB. Admission scanning and organizer/administrator management features remain planned.
 
 See [DESIGN.md](DESIGN.md) for the implemented visual language and component guidance.
 See [API.md](API.md) for API configuration, transport, errors, pagination, authentication integration, and server-state conventions.

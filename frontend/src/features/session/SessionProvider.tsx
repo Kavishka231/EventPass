@@ -46,23 +46,20 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const refresh = useCallback(() => {
     if (refreshFlight.current) return refreshFlight.current;
-    const current = credentialVault.read();
-    if (!current) {
-      clearSession();
-      return Promise.resolve(false);
-    }
-
+    const hadSession = credentialVault.read() !== null;
     setState((existing) => ({ ...existing, status: 'refreshing' }));
     const startingRevision = sessionRevision.current;
     const flight = authService
-      .refresh(current.refreshToken)
+      .refresh()
       .then(async (response) => {
         if (sessionRevision.current !== startingRevision) return false;
         await authenticate(response);
         return true;
       })
       .catch(() => {
-        clearSession(true);
+        if (sessionRevision.current === startingRevision) {
+          clearSession(hadSession);
+        }
         return false;
       })
       .finally(() => {
@@ -73,24 +70,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, [authenticate, clearSession]);
 
   const logout = useCallback(async () => {
-    const current = credentialVault.read();
     try {
-      if (current) await authService.logout(current.refreshToken);
+      await authService.logout();
     } finally {
       clearSession();
     }
   }, [clearSession]);
 
   useEffect(() => {
-    const current = credentialVault.read();
-    if (!current) {
-      setState({
-        status: 'unauthenticated',
-        session: null,
-        sessionExpired: false,
-      });
-      return;
-    }
     void refresh();
   }, [refresh]);
 

@@ -20,7 +20,6 @@ function authResponseDecoder(value: unknown): AuthResponse {
 
   return {
     accessToken: requiredString(object, 'accessToken'),
-    refreshToken: requiredString(object, 'refreshToken'),
     tokenType: requiredString(object, 'tokenType'),
     role: role as AuthResponse['role'],
   };
@@ -47,19 +46,41 @@ export const authService = {
     return response.data;
   },
 
-  async refresh(refreshToken: string) {
+  async refresh() {
+    await ensureCsrfCookie();
     const response = await apiClient.post(
       '/auth/refresh',
-      { refreshToken },
+      undefined,
       authResponseDecoder,
-      { authentication: 'omit' },
+      { authentication: 'omit', headers: csrfHeader() },
     );
     return response.data;
   },
 
-  async logout(refreshToken: string) {
-    await apiClient.post('/auth/logout', { refreshToken }, () => undefined, {
+  async logout() {
+    await ensureCsrfCookie();
+    await apiClient.post('/auth/logout', undefined, () => undefined, {
       authentication: 'omit',
+      headers: csrfHeader(),
     });
   },
 };
+
+function csrfToken() {
+  return document.cookie
+    .split('; ')
+    .find((cookie) => cookie.startsWith('XSRF-TOKEN='))
+    ?.slice('XSRF-TOKEN='.length);
+}
+
+function csrfHeader() {
+  const token = csrfToken();
+  return token ? { 'X-XSRF-TOKEN': decodeURIComponent(token) } : undefined;
+}
+
+async function ensureCsrfCookie() {
+  if (csrfToken()) return;
+  await apiClient.get('/auth/csrf', () => undefined, {
+    authentication: 'omit',
+  });
+}
