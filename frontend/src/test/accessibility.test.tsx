@@ -6,13 +6,14 @@ import { describe, expect, it } from 'vitest';
 
 import { LoginPage } from '../pages/AuthenticationPage';
 import { BookingDetailsPage } from '../pages/BookingDetailsPage';
+import { CheckoutPage } from '../pages/CheckoutPage';
 import { EventDiscoveryPage } from '../pages/EventDiscoveryPage';
 import { NotificationsPage } from '../pages/NotificationsPage';
 import { SeatSelectionPage } from '../pages/SeatSelectionPage';
 import { TicketsPage } from '../pages/TicketsPage';
 import { SessionProvider } from '../features/session';
 import { createTestQueryClient } from './render';
-import { eventFixture, bookingFixture } from './fixtures';
+import { eventFixture, bookingFixture, seatFixtures } from './fixtures';
 
 function renderRoute(
   path: string,
@@ -63,6 +64,30 @@ describe('critical screen accessibility', () => {
       <BookingDetailsPage />,
     );
     await view.findByRole('heading', { name: bookingFixture.reference });
+    expect((await axe.run(view.container)).violations).toEqual([]);
+  });
+
+  it('has no detectable checkout violations', async () => {
+    const view = render(
+      <QueryClientProvider client={createTestQueryClient()}>
+        <MemoryRouter
+          initialEntries={[
+            {
+              pathname: '/checkout',
+              state: {
+                eventId: eventFixture.id,
+                eventSeatIds: [seatFixtures[0].id],
+              },
+            },
+          ]}
+        >
+          <Routes>
+            <Route path="/checkout" element={<CheckoutPage />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    await view.findByLabelText('Sandbox payment token');
     expect((await axe.run(view.container)).violations).toEqual([]);
   });
 
