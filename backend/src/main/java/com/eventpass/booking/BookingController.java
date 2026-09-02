@@ -40,6 +40,54 @@ public class BookingController {
       List<UUID> eventSeatIds,
       Instant createdAt) {}
 
+  public record CustomerBookingSummaryResponse(
+      UUID id,
+      String reference,
+      Booking.Status status,
+      BigDecimal totalAmount,
+      String currency,
+      long seatCount,
+      Instant createdAt,
+      EventSummary event,
+      VenueSummary venue) {}
+
+  public record EventSummary(UUID id, String name, Instant startDateTime, Instant endDateTime) {}
+
+  public record VenueSummary(UUID id, String name, String address, String city) {}
+
+  public record SeatSummary(
+      UUID eventSeatId,
+      UUID seatId,
+      String section,
+      String row,
+      String number,
+      com.eventpass.seat.Seat.Type type,
+      BigDecimal unitPrice) {}
+
+  public record PaymentSummary(
+      com.eventpass.payment.Payment.Status status, Instant attemptedAt, Instant completedAt) {}
+
+  public record RefundSummary(
+      com.eventpass.payment.Refund.Status status,
+      BigDecimal amount,
+      Instant attemptedAt,
+      Instant completedAt) {}
+
+  public record CustomerBookingDetailResponse(
+      UUID id,
+      String reference,
+      Booking.Status status,
+      BigDecimal totalAmount,
+      String currency,
+      Instant createdAt,
+      Instant updatedAt,
+      Instant expiresAt,
+      EventSummary event,
+      VenueSummary venue,
+      List<SeatSummary> seats,
+      PaymentSummary payment,
+      RefundSummary refund) {}
+
   @PostMapping
   ResponseEntity<BookingResponse> create(
       @Valid @RequestBody CreateBookingRequest r,
@@ -49,7 +97,7 @@ public class BookingController {
   }
 
   @GetMapping
-  Page<BookingResponse> list(
+  Page<CustomerBookingSummaryResponse> list(
       @AuthenticationPrincipal User u,
       @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC)
           Pageable pageable) {
@@ -57,7 +105,7 @@ public class BookingController {
   }
 
   @GetMapping("/{id}")
-  BookingResponse get(@PathVariable UUID id, @AuthenticationPrincipal User u) {
+  CustomerBookingDetailResponse get(@PathVariable UUID id, @AuthenticationPrincipal User u) {
     return service.get(id, u);
   }
 

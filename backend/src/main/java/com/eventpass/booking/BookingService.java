@@ -91,24 +91,57 @@ public class BookingService {
   }
 
   @Transactional(readOnly = true)
-  public Page<BookingController.BookingResponse> list(User user, Pageable pageable) {
+  public Page<BookingController.CustomerBookingSummaryResponse> list(User user, Pageable pageable) {
     Page<BookingListRow> page = bookings.findListRowsByUserId(user.getId(), pageable);
-    List<UUID> bookingIds = page.getContent().stream().map(BookingListRow::id).toList();
-    if (bookingIds.isEmpty()) return page.map(row -> response(row, List.of()));
-    Map<UUID, List<UUID>> seatIdsByBooking =
-        bookingItems.findSeatRowsByBookingIds(bookingIds).stream()
-            .collect(
-                java.util.stream.Collectors.groupingBy(
-                    BookingSeatRow::bookingId,
-                    LinkedHashMap::new,
-                    java.util.stream.Collectors.mapping(
-                        BookingSeatRow::eventSeatId, java.util.stream.Collectors.toList())));
-    return page.map(row -> response(row, seatIdsByBooking.getOrDefault(row.id(), List.of())));
+    return page.map(this::summaryResponse);
   }
 
   @Transactional(readOnly = true)
-  public BookingController.BookingResponse get(UUID id, User user) {
-    return response(owned(id, user));
+  public BookingController.CustomerBookingDetailResponse get(UUID id, User user) {
+    List<BookingDetailRow> rows = bookings.findCustomerDetailRows(id, user.getId());
+    if (rows.isEmpty()) {
+      throw new ApiException(HttpStatus.NOT_FOUND, "BOOKING_NOT_FOUND", "Booking was not found.");
+    }
+    BookingDetailRow first = rows.getFirst();
+    return new BookingController.CustomerBookingDetailResponse(
+        first.id(),
+        first.reference(),
+        first.status(),
+        first.totalAmount(),
+        first.currency(),
+        first.createdAt(),
+        first.updatedAt(),
+        first.expiresAt(),
+        new BookingController.EventSummary(
+            first.eventId(),
+            first.eventName(),
+            first.eventStartDateTime(),
+            first.eventEndDateTime()),
+        new BookingController.VenueSummary(
+            first.venueId(), first.venueName(), first.venueAddress(), first.venueCity()),
+        rows.stream()
+            .map(
+                row ->
+                    new BookingController.SeatSummary(
+                        row.eventSeatId(),
+                        row.seatId(),
+                        row.section(),
+                        row.rowNumber(),
+                        row.seatNumber(),
+                        row.seatType(),
+                        row.unitPrice()))
+            .toList(),
+        first.paymentStatus() == null
+            ? null
+            : new BookingController.PaymentSummary(
+                first.paymentStatus(), first.paymentAttemptedAt(), first.paymentCompletedAt()),
+        first.refundStatus() == null
+            ? null
+            : new BookingController.RefundSummary(
+                first.refundStatus(),
+                first.refundAmount(),
+                first.refundAttemptedAt(),
+                first.refundCompletedAt()));
   }
 
   public void cancel(UUID id, User user) {
@@ -206,16 +239,19 @@ public class BookingService {
         booking.getCreatedAt());
   }
 
-  private BookingController.BookingResponse response(BookingListRow booking, List<UUID> seatIds) {
-    return new BookingController.BookingResponse(
+  private BookingController.CustomerBookingSummaryResponse summaryResponse(BookingListRow booking) {
+    return new BookingController.CustomerBookingSummaryResponse(
         booking.id(),
         booking.reference(),
-        booking.eventId(),
         booking.status(),
         booking.totalAmount(),
         booking.currency(),
-        seatIds,
-        booking.createdAt());
+        booking.seatCount(),
+        booking.createdAt(),
+        new BookingController.EventSummary(
+            booking.eventId(), booking.eventName(), booking.eventStartDateTime(), null),
+        new BookingController.VenueSummary(
+            booking.venueId(), booking.venueName(), null, booking.venueCity()));
   }
 
   private ApiException paymentFailed() {
