@@ -5,6 +5,7 @@ import axe from 'axe-core';
 import { describe, expect, it } from 'vitest';
 
 import { LoginPage } from '../pages/AuthenticationPage';
+import { AdmissionPage } from '../pages/AdmissionPage';
 import { BookingDetailsPage } from '../pages/BookingDetailsPage';
 import { CheckoutPage } from '../pages/CheckoutPage';
 import { EventDiscoveryPage } from '../pages/EventDiscoveryPage';
@@ -104,6 +105,12 @@ describe('critical screen accessibility', () => {
       <NotificationsPage />,
     );
     await view.findByText('Booking confirmed');
+    expect((await axe.run(view.container)).violations).toEqual([]);
+  });
+
+  it('has no detectable admission violations', async () => {
+    const view = renderRoute('/admission', '/admission', <AdmissionPage />);
+    await view.findByLabelText('Ticket token');
     expect((await axe.run(view.container)).violations).toEqual([]);
   });
 });

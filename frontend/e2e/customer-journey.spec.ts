@@ -91,13 +91,13 @@ const booking = {
   refund: null,
 };
 
-function auth() {
+function auth(role: 'CUSTOMER' | 'ORGANIZER' | 'ADMIN' = 'CUSTOMER') {
   const encode = (value: object) =>
     Buffer.from(JSON.stringify(value)).toString('base64url');
   return {
-    accessToken: `${encode({ alg: 'none' })}.${encode({ sub: '10000000-0000-0000-0000-000000000001', role: 'CUSTOMER' })}.signature`,
+    accessToken: `${encode({ alg: 'none' })}.${encode({ sub: '10000000-0000-0000-0000-000000000001', role })}.signature`,
     tokenType: 'Bearer',
-    role: 'CUSTOMER',
+    role,
   };
 }
 
@@ -112,6 +112,7 @@ async function json(route: Route, body: unknown, status = 200) {
 async function mockApi(
   page: Page,
   ticketStatus: 'ACTIVE' | 'USED' | 'CANCELLED' = 'ACTIVE',
+  role: 'CUSTOMER' | 'ORGANIZER' | 'ADMIN' = 'CUSTOMER',
 ) {
   let refreshSessionActive = false;
   await page.route('**/api/v1/**', async (route) => {
@@ -122,7 +123,7 @@ async function mockApi(
       return route.fulfill({
         status: path.endsWith('/register') ? 201 : 200,
         contentType: 'application/json',
-        body: JSON.stringify(auth()),
+        body: JSON.stringify(auth(role)),
         headers: {
           'Set-Cookie':
             'eventpass_refresh=e2e-session; Path=/api/v1/auth; HttpOnly; SameSite=Lax',
@@ -132,7 +133,7 @@ async function mockApi(
     if (path === '/api/v1/auth/refresh') {
       if (!refreshSessionActive || !route.request().headers().cookie)
         return route.fulfill({ status: 401 });
-      return json(route, auth());
+      return json(route, auth(role));
     }
     if (path === '/api/v1/auth/csrf')
       return route.fulfill({
@@ -212,18 +213,38 @@ async function mockApi(
           },
         ]),
       );
+    if (path === '/api/v1/tickets/validate')
+      return json(route, {
+        ticketId: ids.ticket,
+        ticketNumber: 'TKT-0001',
+        eventId: ids.event,
+        eventSeatId: ids.eventSeat,
+        status: 'ACTIVE',
+        eventName: event.name,
+        eventStartDateTime: event.startDateTime,
+      });
+    if (path === '/api/v1/tickets/redeem')
+      return json(route, {
+        ticketId: ids.ticket,
+        ticketNumber: 'TKT-0001',
+        eventId: ids.event,
+        status: 'USED',
+        usedAt: '2030-06-20T13:31:00Z',
+      });
     if (path === '/api/v1/notifications/unread-count')
       return json(route, { unreadCount: 0 });
     return route.fulfill({ status: 404 });
   });
 }
 
-async function login(page: Page) {
+async function login(page: Page, destinationHeading = 'Bookings') {
   await page.goto('/login');
   await page.getByLabel('Email').fill('customer@example.com');
   await page.getByLabel('Password', { exact: true }).fill('StrongPassword1!');
   await page.getByRole('button', { name: 'Sign in' }).click();
-  await expect(page.getByRole('heading', { name: 'Bookings' })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: destinationHeading }),
+  ).toBeVisible();
 }
 
 test('restores the browser session after reload and keeps logout revoked', async ({
@@ -268,6 +289,23 @@ test('registers and completes the mocked register-to-ticket customer journey', a
   await expect(page.getByText('Your booking is confirmed')).toBeVisible();
   await page.getByRole('link', { name: 'View tickets' }).click();
   await expect(page.getByText('Scan for admission')).toBeVisible();
+});
+
+test('organizer validates and explicitly redeems a ticket without URL leakage', async ({
+  page,
+}) => {
+  const token = 'e2e-admission-secret';
+  await mockApi(page, 'ACTIVE', 'ORGANIZER');
+  await login(page, 'Organizer overview');
+  await page.goto('/admission');
+  await page.getByLabel('Event', { exact: true }).selectOption(ids.event);
+  await page.getByLabel('Ticket token').fill(token);
+  await page.getByRole('button', { name: 'Validate ticket' }).click();
+  await expect(page.getByText('Confirm ticket redemption')).toBeVisible();
+  expect(page.url()).not.toContain(token);
+  await page.getByRole('button', { name: 'Confirm admission' }).click();
+  await expect(page.getByText('Admission confirmed')).toBeVisible();
+  await expect(page.locator('body')).not.toContainText(token);
 });
 
 for (const status of ['USED', 'CANCELLED'] as const) {

@@ -73,6 +73,26 @@ export const handlers = [
     () => new HttpResponse(null, { status: 204 }),
   ),
   http.get('*/api/v1/tickets', () => HttpResponse.json(page([ticketFixture]))),
+  http.post('*/api/v1/tickets/validate', () =>
+    HttpResponse.json({
+      ticketId: ticketFixture.id,
+      ticketNumber: ticketFixture.ticketNumber,
+      eventId: eventFixture.id,
+      eventSeatId: ticketFixture.eventSeatId,
+      status: 'ACTIVE',
+      eventName: eventFixture.name,
+      eventStartDateTime: eventFixture.startDateTime,
+    }),
+  ),
+  http.post('*/api/v1/tickets/redeem', () =>
+    HttpResponse.json({
+      ticketId: ticketFixture.id,
+      ticketNumber: ticketFixture.ticketNumber,
+      eventId: eventFixture.id,
+      status: 'USED',
+      usedAt: '2030-06-20T13:31:00Z',
+    }),
+  ),
   http.get('*/api/v1/notifications', () =>
     HttpResponse.json(page([notificationFixture])),
   ),
