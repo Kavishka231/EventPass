@@ -143,7 +143,6 @@ export function authFixture(
 ) {
   return {
     accessToken: `${base64Url({ alg: 'none' })}.${base64Url({ sub: ids.user, role })}.signature`,
-    refreshToken: 'rotating-refresh-token',
     tokenType: 'Bearer',
     role,
   };

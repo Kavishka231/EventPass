@@ -13,7 +13,14 @@ import {
 export const handlers = [
   http.post('*/api/v1/auth/login', () => HttpResponse.json(authFixture())),
   http.post('*/api/v1/auth/register', () => HttpResponse.json(authFixture())),
-  http.post('*/api/v1/auth/refresh', () => HttpResponse.json(authFixture())),
+  http.get('*/api/v1/auth/csrf', () => {
+    document.cookie = 'XSRF-TOKEN=test-csrf-token; path=/';
+    return new HttpResponse(null, { status: 204 });
+  }),
+  http.post(
+    '*/api/v1/auth/refresh',
+    () => new HttpResponse(null, { status: 401 }),
+  ),
   http.post(
     '*/api/v1/auth/logout',
     () => new HttpResponse(null, { status: 204 }),

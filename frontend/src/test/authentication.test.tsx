@@ -45,7 +45,10 @@ describe('authentication flows', () => {
     expect(
       await screen.findByRole('heading', { name: 'Bookings' }),
     ).toBeVisible();
-    expect(credentialVault.read()?.refreshToken).toBe('rotating-refresh-token');
+    expect(credentialVault.read()?.accessToken).toBe(authFixture().accessToken);
+    expect(JSON.stringify(credentialVault.read())).not.toContain(
+      'refreshToken',
+    );
   });
 
   it('shows normalized invalid-credential feedback and keeps credentials out of the vault', async () => {
@@ -116,8 +119,57 @@ describe('authentication flows', () => {
     ).toBeVisible();
   });
 
-  it('restores an in-memory session once on application start', async () => {
-    credentialVault.replace(authFixture());
+  it('keeps protected content hidden until cookie session restoration succeeds', async () => {
+    server.use(
+      http.post('*/api/v1/auth/refresh', async () => {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        return HttpResponse.json(authFixture());
+      }),
+    );
+    await renderAuth(
+      <Routes>
+        <Route
+          path="/private"
+          element={
+            <RouteGuard roles={['CUSTOMER']}>
+              <h1>Restored account</h1>
+            </RouteGuard>
+          }
+        />
+        <Route path="/login" element={<h1>Login required</h1>} />
+      </Routes>,
+      '/private',
+    );
+    expect(
+      screen.queryByRole('heading', { name: 'Restored account' }),
+    ).toBeNull();
+    expect(
+      await screen.findByRole('heading', { name: 'Restored account' }),
+    ).toBeVisible();
+  });
+
+  it('falls back to logged-out routing when cookie restoration fails', async () => {
+    await renderAuth(
+      <Routes>
+        <Route
+          path="/private"
+          element={
+            <RouteGuard roles={['CUSTOMER']}>
+              <h1>Private</h1>
+            </RouteGuard>
+          }
+        />
+        <Route path="/login" element={<h1>Login required</h1>} />
+      </Routes>,
+      '/private',
+    );
+    expect(
+      await screen.findByRole('heading', { name: 'Login required' }),
+    ).toBeVisible();
+    expect(credentialVault.read()).toBeNull();
+  });
+
+  it('restores a cookie-backed session once on application start', async () => {
     let refreshCalls = 0;
     server.use(
       http.post('*/api/v1/auth/refresh', async () => {
@@ -132,7 +184,6 @@ describe('authentication flows', () => {
   });
 
   it('coalesces concurrent expired-token recovery into one rotating refresh', async () => {
-    credentialVault.replace(authFixture());
     let refreshCalls = 0;
     let protectedCalls = 0;
     server.use(

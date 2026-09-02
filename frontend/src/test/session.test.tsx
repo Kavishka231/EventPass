@@ -3,11 +3,13 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it } from 'vitest';
+import { http, HttpResponse } from 'msw';
 
 import { SessionProvider, useSession } from '../features/session';
 import { credentialVault } from '../features/session/credentialVault';
 import { authFixture } from './fixtures';
 import { createTestQueryClient } from './render';
+import { server } from './server';
 
 function Harness() {
   const session = useSession();
@@ -31,7 +33,11 @@ beforeEach(() => credentialVault.clear());
 
 describe('session lifecycle', () => {
   it('logs out through the backend and clears user query data', async () => {
-    credentialVault.replace(authFixture());
+    server.use(
+      http.post('*/api/v1/auth/refresh', () =>
+        HttpResponse.json(authFixture()),
+      ),
+    );
     const queryClient = createTestQueryClient();
     render(
       <QueryClientProvider client={queryClient}>

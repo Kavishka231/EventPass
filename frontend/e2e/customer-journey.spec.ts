@@ -96,7 +96,6 @@ function auth() {
     Buffer.from(JSON.stringify(value)).toString('base64url');
   return {
     accessToken: `${encode({ alg: 'none' })}.${encode({ sub: '10000000-0000-0000-0000-000000000001', role: 'CUSTOMER' })}.signature`,
-    refreshToken: 'refresh-token',
     tokenType: 'Bearer',
     role: 'CUSTOMER',
   };
@@ -114,16 +113,42 @@ async function mockApi(
   page: Page,
   ticketStatus: 'ACTIVE' | 'USED' | 'CANCELLED' = 'ACTIVE',
 ) {
+  let refreshSessionActive = false;
   await page.route('**/api/v1/**', async (route) => {
     const url = new URL(route.request().url());
     const path = url.pathname;
-    if (
-      path === '/api/v1/auth/register' ||
-      path === '/api/v1/auth/login' ||
-      path === '/api/v1/auth/refresh'
-    )
+    if (path === '/api/v1/auth/register' || path === '/api/v1/auth/login') {
+      refreshSessionActive = true;
+      return route.fulfill({
+        status: path.endsWith('/register') ? 201 : 200,
+        contentType: 'application/json',
+        body: JSON.stringify(auth()),
+        headers: {
+          'Set-Cookie':
+            'eventpass_refresh=e2e-session; Path=/api/v1/auth; HttpOnly; SameSite=Lax',
+        },
+      });
+    }
+    if (path === '/api/v1/auth/refresh') {
+      if (!refreshSessionActive || !route.request().headers().cookie)
+        return route.fulfill({ status: 401 });
       return json(route, auth());
-    if (path === '/api/v1/auth/logout') return route.fulfill({ status: 204 });
+    }
+    if (path === '/api/v1/auth/csrf')
+      return route.fulfill({
+        status: 204,
+        headers: { 'Set-Cookie': 'XSRF-TOKEN=e2e-csrf; Path=/; SameSite=Lax' },
+      });
+    if (path === '/api/v1/auth/logout') {
+      refreshSessionActive = false;
+      return route.fulfill({
+        status: 204,
+        headers: {
+          'Set-Cookie':
+            'eventpass_refresh=; Path=/api/v1/auth; Max-Age=0; HttpOnly; SameSite=Lax',
+        },
+      });
+    }
     if (path === '/api/v1/events') return json(route, pageResponse([event]));
     if (path === `/api/v1/events/${ids.event}`) return json(route, event);
     if (path === `/api/v1/events/${ids.event}/seats`)
@@ -200,6 +225,23 @@ async function login(page: Page) {
   await page.getByRole('button', { name: 'Sign in' }).click();
   await expect(page.getByRole('heading', { name: 'Bookings' })).toBeVisible();
 }
+
+test('restores the browser session after reload and keeps logout revoked', async ({
+  page,
+}) => {
+  await mockApi(page);
+  await login(page);
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Bookings' })).toBeVisible();
+  await page.getByRole('button', { name: 'Log out' }).click();
+  await expect(page).toHaveURL(/\/login\?returnTo=/);
+  await page.goto('/bookings');
+  await expect(page).toHaveURL(/\/login\?returnTo=/);
+  await page.reload();
+  await expect(
+    page.getByRole('heading', { name: 'Welcome back' }),
+  ).toBeVisible();
+});
 
 test('registers and completes the mocked register-to-ticket customer journey', async ({
   page,
