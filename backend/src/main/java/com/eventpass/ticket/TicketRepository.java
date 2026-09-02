@@ -20,12 +20,44 @@ public interface TicketRepository extends JpaRepository<Ticket, UUID> {
             ticket.eventSeat.id,
             ticket.qrToken,
             ticket.status,
-            ticket.issuedAt)
+            ticket.issuedAt,
+            ticket.usedAt,
+            ticket.booking.bookingReference,
+            ticket.booking.event.id,
+            ticket.booking.event.name,
+            ticket.booking.event.startDateTime,
+            ticket.booking.event.endDateTime,
+            ticket.booking.event.venue.id,
+            ticket.booking.event.venue.name,
+            ticket.booking.event.venue.address,
+            ticket.booking.event.venue.city,
+            ticket.eventSeat.seat.id,
+            ticket.eventSeat.seat.section,
+            ticket.eventSeat.seat.rowNumber,
+            ticket.eventSeat.seat.seatNumber,
+            ticket.eventSeat.seat.seatType)
           from Ticket ticket
           where ticket.booking.user.id = :userId
           """,
       countQuery = "select count(ticket) from Ticket ticket where ticket.booking.user.id = :userId")
   Page<TicketListRow> findListRowsByUserId(@Param("userId") UUID userId, Pageable pageable);
+
+  @Query(
+      """
+      select new com.eventpass.ticket.TicketListRow(
+        ticket.id, ticket.ticketNumber, ticket.booking.id, ticket.eventSeat.id,
+        ticket.qrToken, ticket.status, ticket.issuedAt, ticket.usedAt,
+        ticket.booking.bookingReference, ticket.booking.event.id, ticket.booking.event.name,
+        ticket.booking.event.startDateTime, ticket.booking.event.endDateTime,
+        ticket.booking.event.venue.id, ticket.booking.event.venue.name,
+        ticket.booking.event.venue.address, ticket.booking.event.venue.city,
+        ticket.eventSeat.seat.id, ticket.eventSeat.seat.section,
+        ticket.eventSeat.seat.rowNumber, ticket.eventSeat.seat.seatNumber,
+        ticket.eventSeat.seat.seatType)
+      from Ticket ticket
+      where ticket.id = :id and ticket.booking.user.id = :userId
+      """)
+  Optional<TicketListRow> findCustomerRowById(@Param("id") UUID id, @Param("userId") UUID userId);
 
   List<Ticket> findAllByBookingId(UUID bookingId);
 

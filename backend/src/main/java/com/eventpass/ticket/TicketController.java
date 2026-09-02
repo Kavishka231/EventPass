@@ -31,7 +31,19 @@ public class TicketController {
       UUID eventSeatId,
       String qrToken,
       Ticket.Status status,
-      Instant issuedAt) {}
+      Instant issuedAt,
+      Instant usedAt,
+      String bookingReference,
+      EventSummary event,
+      VenueSummary venue,
+      SeatSummary seat) {}
+
+  public record EventSummary(UUID id, String name, Instant startDateTime, Instant endDateTime) {}
+
+  public record VenueSummary(UUID id, String name, String address, String city) {}
+
+  public record SeatSummary(
+      UUID id, String section, String row, String number, com.eventpass.seat.Seat.Type type) {}
 
   public record ValidateTicketRequest(
       @NotBlank @Size(max = 128) String qrToken, @NotNull UUID eventId) {}
@@ -54,6 +66,11 @@ public class TicketController {
       @PageableDefault(size = 20, sort = "issuedAt", direction = Sort.Direction.DESC)
           Pageable pageable) {
     return service.list(u, pageable);
+  }
+
+  @GetMapping("/{id}")
+  TicketResponse get(@PathVariable UUID id, @AuthenticationPrincipal User u) {
+    return service.get(id, u);
   }
 
   @PostMapping("/validate")

@@ -20,18 +20,44 @@ public class TicketService {
 
   @Transactional(readOnly = true)
   public Page<TicketController.TicketResponse> list(User user, Pageable pageable) {
+    return tickets.findListRowsByUserId(user.getId(), pageable).map(this::response);
+  }
+
+  @Transactional(readOnly = true)
+  public TicketController.TicketResponse get(java.util.UUID id, User user) {
     return tickets
-        .findListRowsByUserId(user.getId(), pageable)
-        .map(
-            ticket ->
-                new TicketController.TicketResponse(
-                    ticket.id(),
-                    ticket.ticketNumber(),
-                    ticket.bookingId(),
-                    ticket.eventSeatId(),
-                    ticket.qrToken(),
-                    ticket.status(),
-                    ticket.issuedAt()));
+        .findCustomerRowById(id, user.getId())
+        .map(this::response)
+        .orElseThrow(
+            () ->
+                new ApiException(
+                    HttpStatus.NOT_FOUND, "TICKET_NOT_FOUND", "Ticket was not found."));
+  }
+
+  private TicketController.TicketResponse response(TicketListRow ticket) {
+    return new TicketController.TicketResponse(
+        ticket.id(),
+        ticket.ticketNumber(),
+        ticket.bookingId(),
+        ticket.eventSeatId(),
+        ticket.status() == Ticket.Status.ACTIVE ? ticket.qrToken() : null,
+        ticket.status(),
+        ticket.issuedAt(),
+        ticket.usedAt(),
+        ticket.bookingReference(),
+        new TicketController.EventSummary(
+            ticket.eventId(),
+            ticket.eventName(),
+            ticket.eventStartDateTime(),
+            ticket.eventEndDateTime()),
+        new TicketController.VenueSummary(
+            ticket.venueId(), ticket.venueName(), ticket.venueAddress(), ticket.venueCity()),
+        new TicketController.SeatSummary(
+            ticket.seatId(),
+            ticket.section(),
+            ticket.rowNumber(),
+            ticket.seatNumber(),
+            ticket.seatType()));
   }
 
   @Transactional(readOnly = true)
