@@ -105,6 +105,30 @@ class AuthServiceTest {
             org.mockito.ArgumentMatchers.eq("LOGOUT"));
   }
 
+  @Test
+  void expiredRefreshTokenIsRejectedAndRevoked() {
+    RefreshToken expired = activeToken();
+    expired.setExpiresAt(Instant.now().minusSeconds(1));
+    when(tokens.lockByTokenHash(any())).thenReturn(Optional.of(expired));
+
+    assertThatThrownBy(() -> service.refresh("expired-token", "Browser"))
+        .isInstanceOf(ApiException.class)
+        .extracting(exception -> ((ApiException) exception).code())
+        .isEqualTo("INVALID_REFRESH_TOKEN");
+    assertThat(expired.isRevoked()).isTrue();
+    assertThat(expired.getRevocationReason()).isEqualTo("EXPIRED");
+  }
+
+  @Test
+  void unknownRefreshTokenIsRejected() {
+    when(tokens.lockByTokenHash(any())).thenReturn(Optional.empty());
+
+    assertThatThrownBy(() -> service.refresh("unknown-token", "Browser"))
+        .isInstanceOf(ApiException.class)
+        .extracting(exception -> ((ApiException) exception).code())
+        .isEqualTo("INVALID_REFRESH_TOKEN");
+  }
+
   private RefreshToken activeToken() {
     RefreshToken token = new RefreshToken();
     token.setId(UUID.randomUUID());

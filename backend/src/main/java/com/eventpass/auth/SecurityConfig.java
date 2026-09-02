@@ -11,7 +11,11 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
+import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
+import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
+import org.springframework.security.web.util.matcher.OrRequestMatcher;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -29,9 +33,23 @@ public class SecurityConfig {
       HttpSecurity http,
       JwtAuthenticationFilter jwt,
       RateLimitFilter rateLimit,
-      SecurityErrorHandler errors)
+      SecurityErrorHandler errors,
+      @Value("${eventpass.security.cookies.secure:false}") boolean secureCookie,
+      @Value("${eventpass.security.cookies.same-site:Lax}") String sameSite)
       throws Exception {
-    return http.csrf(c -> c.disable())
+    CookieCsrfTokenRepository csrfRepository = CookieCsrfTokenRepository.withHttpOnlyFalse();
+    csrfRepository.setCookieCustomizer(
+        cookie -> cookie.path("/").secure(secureCookie).sameSite(sameSite));
+    CsrfTokenRequestAttributeHandler csrfRequestHandler = new CsrfTokenRequestAttributeHandler();
+    csrfRequestHandler.setCsrfRequestAttributeName(null);
+    return http.csrf(
+            csrf ->
+                csrf.csrfTokenRepository(csrfRepository)
+                    .csrfTokenRequestHandler(csrfRequestHandler)
+                    .requireCsrfProtectionMatcher(
+                        new OrRequestMatcher(
+                            new AntPathRequestMatcher("/api/v1/auth/refresh", "POST"),
+                            new AntPathRequestMatcher("/api/v1/auth/logout", "POST"))))
         .cors(c -> {})
         .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
         .authorizeHttpRequests(
@@ -92,7 +110,8 @@ public class SecurityConfig {
             "Content-Type",
             "Idempotency-Key",
             "X-Request-Id",
-            "X-Correlation-Id"));
+            "X-Correlation-Id",
+            "X-XSRF-TOKEN"));
     configuration.setExposedHeaders(List.of("X-Request-Id", "X-Correlation-Id"));
     configuration.setAllowCredentials(true);
     configuration.setMaxAge(3600L);
