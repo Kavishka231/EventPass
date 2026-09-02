@@ -6,6 +6,8 @@ import {
 } from '../../services/api';
 import type {
   BookingResponse,
+  CustomerBookingDetails,
+  CustomerBookingSummary,
   CreateBookingRequest,
   PaginationParameters,
 } from '../../types';
@@ -66,6 +68,120 @@ export function bookingResponseDecoder(value: unknown): BookingResponse {
   };
 }
 
+function nullableString(object: Record<string, unknown>, field: string) {
+  const value = object[field];
+  if (value === null) return null;
+  return requiredString(object, field);
+}
+
+function dateString(object: Record<string, unknown>, field: string) {
+  const value = requiredString(object, field);
+  if (Number.isNaN(Date.parse(value)))
+    throw new Error(`Expected ${field} to be an ISO date-time.`);
+  return value;
+}
+
+function eventDecoder(value: unknown) {
+  const object = objectResponseDecoder(value);
+  const endDateTime = nullableString(object, 'endDateTime');
+  return {
+    id: requiredString(object, 'id'),
+    name: requiredString(object, 'name'),
+    startDateTime: dateString(object, 'startDateTime'),
+    endDateTime,
+  };
+}
+
+function venueDecoder(value: unknown) {
+  const object = objectResponseDecoder(value);
+  return {
+    id: requiredString(object, 'id'),
+    name: requiredString(object, 'name'),
+    address: nullableString(object, 'address'),
+    city: requiredString(object, 'city'),
+  };
+}
+
+function bookingBase(object: Record<string, unknown>) {
+  const status = requiredString(object, 'status');
+  if (!statuses.has(status as BookingResponse['status']))
+    throw new Error('Expected a supported booking status.');
+  if (
+    typeof object.totalAmount !== 'number' ||
+    !Number.isFinite(object.totalAmount)
+  )
+    throw new Error('Expected totalAmount to be a number.');
+  return {
+    id: requiredString(object, 'id'),
+    reference: requiredString(object, 'reference'),
+    status: status as BookingResponse['status'],
+    totalAmount: object.totalAmount,
+    currency: requiredString(object, 'currency'),
+    createdAt: dateString(object, 'createdAt'),
+    event: eventDecoder(object.event),
+    venue: venueDecoder(object.venue),
+  };
+}
+
+function bookingSummaryDecoder(value: unknown): CustomerBookingSummary {
+  const object = objectResponseDecoder(value);
+  if (
+    typeof object.seatCount !== 'number' ||
+    !Number.isInteger(object.seatCount)
+  )
+    throw new Error('Expected seatCount to be an integer.');
+  return { ...bookingBase(object), seatCount: object.seatCount };
+}
+
+function optionalLifecycle(value: unknown) {
+  if (value === null) return null;
+  const object = objectResponseDecoder(value);
+  const attemptedAt = nullableString(object, 'attemptedAt');
+  const completedAt = nullableString(object, 'completedAt');
+  return {
+    status: requiredString(object, 'status'),
+    attemptedAt,
+    completedAt,
+  };
+}
+
+function optionalRefund(value: unknown): CustomerBookingDetails['refund'] {
+  if (value === null) return null;
+  const object = objectResponseDecoder(value);
+  if (typeof object.amount !== 'number' || !Number.isFinite(object.amount)) {
+    throw new Error('Expected refund amount to be a number.');
+  }
+  return { ...optionalLifecycle(value)!, amount: object.amount };
+}
+
+function bookingDetailsDecoder(value: unknown): CustomerBookingDetails {
+  const object = objectResponseDecoder(value);
+  if (!Array.isArray(object.seats))
+    throw new Error('Expected seats to be an array.');
+  const seats = object.seats.map((value) => {
+    const seat = objectResponseDecoder(value);
+    if (typeof seat.unitPrice !== 'number')
+      throw new Error('Expected seat unitPrice to be a number.');
+    return {
+      eventSeatId: requiredString(seat, 'eventSeatId'),
+      seatId: requiredString(seat, 'seatId'),
+      section: requiredString(seat, 'section'),
+      row: requiredString(seat, 'row'),
+      number: requiredString(seat, 'number'),
+      type: requiredString(seat, 'type') as 'REGULAR' | 'PREMIUM' | 'VIP',
+      unitPrice: seat.unitPrice,
+    };
+  });
+  return {
+    ...bookingBase(object),
+    updatedAt: dateString(object, 'updatedAt'),
+    expiresAt: dateString(object, 'expiresAt'),
+    seats,
+    payment: optionalLifecycle(object.payment),
+    refund: optionalRefund(object.refund),
+  };
+}
+
 export const bookingService = {
   async create(request: CreateBookingRequest, idempotencyKey: string) {
     const response = await apiClient.post(
@@ -80,7 +196,7 @@ export const bookingService = {
   async list(parameters: PaginationParameters) {
     const response = await apiClient.get(
       '/bookings',
-      paginatedResponseDecoder(bookingResponseDecoder),
+      paginatedResponseDecoder(bookingSummaryDecoder),
       {
         query: {
           page: parameters.page,
@@ -95,7 +211,7 @@ export const bookingService = {
   async get(bookingId: string) {
     const response = await apiClient.get(
       `/bookings/${bookingId}`,
-      bookingResponseDecoder,
+      bookingDetailsDecoder,
     );
     return response.data;
   },

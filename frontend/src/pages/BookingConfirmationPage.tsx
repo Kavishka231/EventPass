@@ -4,18 +4,12 @@ import { BookingOverview } from '../components/booking';
 import { Container, Section } from '../components/layout';
 import { ErrorState, Skeleton, SuccessState } from '../components/ui';
 import { useBooking } from '../features/bookings';
-import { useEvent, useEventSeats } from '../features/events';
 import { isApiError } from '../services/api';
 
 export function BookingConfirmationPage() {
   const navigate = useNavigate();
   const bookingId = useParams().bookingId ?? '';
   const booking = useBooking(bookingId);
-  const event = useEvent(booking.data?.eventId ?? '', Boolean(booking.data));
-  const seats = useEventSeats(
-    booking.data?.eventId ?? '',
-    Boolean(booking.data),
-  );
 
   if (booking.isPending) {
     return (
@@ -72,12 +66,7 @@ export function BookingConfirmationPage() {
             </div>
           )}
         </div>
-        <BookingOverview
-          booking={booking.data}
-          event={event.data}
-          seats={seats.data}
-          showTicketAction
-        />
+        <BookingOverview booking={booking.data} showTicketAction />
         <Link className="back-link" to="/bookings">
           View all bookings
         </Link>

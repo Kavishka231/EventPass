@@ -7,9 +7,25 @@ export interface TicketResponse {
   ticketNumber: string;
   bookingId: Uuid;
   eventSeatId: Uuid;
-  qrToken: string;
+  qrToken: string | null;
   status: TicketStatus;
   issuedAt: IsoInstant;
+  usedAt: IsoInstant | null;
+  bookingReference: string;
+  event: {
+    id: Uuid;
+    name: string;
+    startDateTime: IsoInstant;
+    endDateTime: IsoInstant;
+  };
+  venue: { id: Uuid; name: string; address: string; city: string };
+  seat: {
+    id: Uuid;
+    section: string;
+    row: string;
+    number: string;
+    type: 'REGULAR' | 'PREMIUM' | 'VIP';
+  };
 }
 
 export interface ValidateTicketRequest {

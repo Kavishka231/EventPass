@@ -1,9 +1,6 @@
 import QRCode from 'react-qr-code';
 
-import { seatDisplayName } from '../booking';
 import { Badge } from '../ui';
-import { useBooking } from '../../features/bookings';
-import { useEvent, useEventSeats } from '../../features/events';
 import type { TicketResponse } from '../../types';
 
 const ticketTone = {
@@ -25,19 +22,7 @@ export function TicketCard({
   highlighted?: boolean;
   ticket: TicketResponse;
 }) {
-  const booking = useBooking(ticket.bookingId);
-  const event = useEvent(
-    booking.data?.eventId ?? '',
-    Boolean(booking.data?.eventId),
-  );
-  const seats = useEventSeats(
-    booking.data?.eventId ?? '',
-    Boolean(booking.data?.eventId),
-  );
-  const seat = seats.data?.find(
-    (candidate) => candidate.id === ticket.eventSeatId,
-  );
-  const startsAt = event.data ? new Date(event.data.startDateTime) : null;
+  const startsAt = new Date(ticket.event.startDateTime);
 
   return (
     <article
@@ -50,7 +35,7 @@ export function TicketCard({
         <header className="digital-ticket-heading">
           <div>
             <p className="discovery-eyebrow">EventPass digital ticket</p>
-            <h2>{event.data?.name ?? 'Event ticket'}</h2>
+            <h2>{ticket.event.name}</h2>
           </div>
           <Badge tone={ticketTone[ticket.status]}>
             {ticketLabel[ticket.status]}
@@ -61,26 +46,23 @@ export function TicketCard({
           <div>
             <dt>Date and time</dt>
             <dd>
-              {startsAt
-                ? startsAt.toLocaleString(undefined, {
-                    dateStyle: 'long',
-                    timeStyle: 'short',
-                  })
-                : 'Event information unavailable'}
+              {startsAt.toLocaleString(undefined, {
+                dateStyle: 'long',
+                timeStyle: 'short',
+              })}
             </dd>
           </div>
           <div>
             <dt>Venue</dt>
             <dd>
-              {event.data
-                ? `${event.data.venueName}, ${event.data.city}`
-                : 'Unavailable'}
+              {ticket.venue.name}, {ticket.venue.city}
             </dd>
           </div>
           <div>
             <dt>Seat</dt>
             <dd>
-              {seat ? seatDisplayName(seat) : 'Seat information unavailable'}
+              {ticket.seat.section} · Row {ticket.seat.row} · Seat{' '}
+              {ticket.seat.number}
             </dd>
           </div>
           <div>
@@ -89,7 +71,7 @@ export function TicketCard({
           </div>
           <div>
             <dt>Booking reference</dt>
-            <dd>{booking.data?.reference ?? 'Unavailable'}</dd>
+            <dd>{ticket.bookingReference}</dd>
           </div>
           <div>
             <dt>Issued</dt>
@@ -97,7 +79,7 @@ export function TicketCard({
           </div>
         </dl>
 
-        {ticket.status === 'ACTIVE' ? (
+        {ticket.status === 'ACTIVE' && ticket.qrToken ? (
           <div className="ticket-admission-guidance">
             <strong>Ready for admission</strong>
             <p>
@@ -121,7 +103,7 @@ export function TicketCard({
       </div>
 
       <aside className="ticket-qr-panel" aria-label="Ticket admission code">
-        {ticket.status === 'ACTIVE' ? (
+        {ticket.status === 'ACTIVE' && ticket.qrToken ? (
           <>
             <div className="ticket-qr" aria-hidden="true">
               <QRCode
