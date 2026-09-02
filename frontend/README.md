@@ -31,6 +31,7 @@ The frontend consumes the backend under `/api/v1`. Backend authorization, availa
 - Public event details with backend seat-price bands, periodically refreshed availability snapshots, bookability-aware actions, and responsive booking presentation
 - Interactive public seat maps with backend inventory states, accessible selection, ten-seat limit parity, estimated totals, polling conflict recovery, and authenticated checkout handoff
 - Protected idempotent checkout with refreshed inventory validation, server-authoritative pricing, sandbox payment outcomes, stable retry keys, and related-query invalidation
+- Organizer/admin ticket admission with published-event selection, camera QR scanning, masked manual entry, server validation, explicit confirmation, and atomic redemption
 - Refresh-safe booking confirmation, newest-first paginated history, enriched owned booking details, cancellation eligibility, duplicate-safe cancellation, and durable payment/refund feedback without browser-side event or inventory joins
 - Secure paginated digital tickets backed by enriched owned projections, active-only QR presentation, booking/event/venue/seat context, clear used/cancelled states, and memory-only QR handling
 - Customer notification center with newest-first pagination, accessible read state, synchronized unread navigation count, and authoritative mark-as-read handling

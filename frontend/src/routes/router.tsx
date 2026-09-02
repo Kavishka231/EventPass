@@ -5,6 +5,7 @@ import { LoginPage, RegistrationPage } from '../pages/AuthenticationPage';
 import { BookingConfirmationPage } from '../pages/BookingConfirmationPage';
 import { BookingDetailsPage } from '../pages/BookingDetailsPage';
 import { BookingHistoryPage } from '../pages/BookingHistoryPage';
+import { AdmissionPage } from '../pages/AdmissionPage';
 import { CheckoutPage } from '../pages/CheckoutPage';
 import { EventDiscoveryPage } from '../pages/EventDiscoveryPage';
 import { EventDetailsPage } from '../pages/EventDetailsPage';
@@ -291,13 +292,7 @@ export const router = createBrowserRouter([
     children: [
       {
         path: 'admission',
-        element: (
-          <PlaceholderPage
-            group="Admission"
-            title="Ticket admission"
-            description="Secure validation and redemption scanning will be implemented later."
-          />
-        ),
+        element: <AdmissionPage />,
       },
     ],
   },

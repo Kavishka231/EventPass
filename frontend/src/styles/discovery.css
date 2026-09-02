@@ -7,6 +7,84 @@
   text-transform: uppercase;
 }
 
+.admission-section {
+  min-height: 70vh;
+}
+.admission-layout {
+  display: grid;
+  gap: var(--space-8);
+  grid-template-columns: minmax(0, 1.5fr) minmax(18rem, 0.75fr);
+  align-items: start;
+}
+.admission-workflow {
+  display: grid;
+  gap: var(--space-6);
+}
+.admission-camera,
+.admission-manual,
+.admission-result,
+.admission-guidance {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-panel);
+  background: var(--color-surface);
+  padding: var(--space-6);
+}
+.admission-camera,
+.admission-manual {
+  display: grid;
+  gap: var(--space-5);
+}
+.admission-video {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border-radius: var(--radius-card);
+  background: var(--color-text);
+}
+.admission-result {
+  position: sticky;
+  top: var(--space-6);
+}
+.admission-guidance span {
+  display: grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  background: var(--color-accent);
+  color: var(--color-surface);
+  font-weight: 700;
+}
+.admission-ticket-summary {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+}
+.admission-ticket-summary div {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: var(--space-3);
+}
+.admission-ticket-summary dt {
+  color: var(--color-text-muted);
+}
+.admission-ticket-summary dd {
+  margin: 0;
+  text-align: right;
+  font-weight: 600;
+}
+
+@media (max-width: 52rem) {
+  .admission-layout {
+    grid-template-columns: 1fr;
+  }
+  .admission-result {
+    position: static;
+  }
+}
+
 .home-hero {
   display: grid;
   min-height: clamp(38rem, 78vh, 55rem);

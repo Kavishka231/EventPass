@@ -3,7 +3,13 @@ import {
   objectResponseDecoder,
   paginatedResponseDecoder,
 } from '../../services/api';
-import type { PaginationParameters, TicketResponse } from '../../types';
+import type {
+  PaginationParameters,
+  TicketRedemptionResponse,
+  TicketResponse,
+  TicketValidationResponse,
+  ValidateTicketRequest,
+} from '../../types';
 
 function requiredString(object: Record<string, unknown>, field: string) {
   const value = object[field];
@@ -65,6 +71,46 @@ function ticketResponseDecoder(value: unknown): TicketResponse {
   };
 }
 
+function requiredInstant(object: Record<string, unknown>, field: string) {
+  const value = requiredString(object, field);
+  if (Number.isNaN(Date.parse(value))) {
+    throw new Error(`Expected ${field} to be an ISO date-time.`);
+  }
+  return value;
+}
+
+function admissionStatus(object: Record<string, unknown>) {
+  const status = requiredString(object, 'status');
+  if (!['ACTIVE', 'USED', 'CANCELLED'].includes(status)) {
+    throw new Error('Expected a supported admission ticket status.');
+  }
+  return status as TicketResponse['status'];
+}
+
+function validationResponseDecoder(value: unknown): TicketValidationResponse {
+  const object = objectResponseDecoder(value);
+  return {
+    ticketId: requiredString(object, 'ticketId'),
+    ticketNumber: requiredString(object, 'ticketNumber'),
+    eventId: requiredString(object, 'eventId'),
+    eventSeatId: requiredString(object, 'eventSeatId'),
+    status: admissionStatus(object),
+    eventName: requiredString(object, 'eventName'),
+    eventStartDateTime: requiredInstant(object, 'eventStartDateTime'),
+  };
+}
+
+function redemptionResponseDecoder(value: unknown): TicketRedemptionResponse {
+  const object = objectResponseDecoder(value);
+  return {
+    ticketId: requiredString(object, 'ticketId'),
+    ticketNumber: requiredString(object, 'ticketNumber'),
+    eventId: requiredString(object, 'eventId'),
+    status: admissionStatus(object),
+    usedAt: requiredInstant(object, 'usedAt'),
+  };
+}
+
 export const ticketService = {
   async list(parameters: PaginationParameters) {
     const response = await apiClient.get(
@@ -77,6 +123,24 @@ export const ticketService = {
           sort: parameters.sort,
         },
       },
+    );
+    return response.data;
+  },
+
+  async validate(request: ValidateTicketRequest) {
+    const response = await apiClient.post(
+      '/tickets/validate',
+      request,
+      validationResponseDecoder,
+    );
+    return response.data;
+  },
+
+  async redeem(request: ValidateTicketRequest) {
+    const response = await apiClient.post(
+      '/tickets/redeem',
+      request,
+      redemptionResponseDecoder,
     );
     return response.data;
   },
