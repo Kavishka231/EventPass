@@ -32,13 +32,15 @@ The frontend consumes the backend under `/api/v1`. Backend authorization, availa
 - Interactive public seat maps with backend inventory states, accessible selection, ten-seat limit parity, estimated totals, polling conflict recovery, and authenticated checkout handoff
 - Protected idempotent checkout with refreshed inventory validation, server-authoritative pricing, sandbox payment outcomes, stable retry keys, and related-query invalidation
 - Refresh-safe booking confirmation, newest-first paginated history, booking details, cancellation eligibility, duplicate-safe cancellation, and refund-reconciliation feedback
+- Secure paginated digital tickets with active-only QR presentation, booking/event/seat context, clear used/cancelled states, and memory-only QR handling
 
-Route placeholders prove the remaining application hierarchy without implementing later product functionality. Authentication credentials stay only in memory because the backend does not provide an `HttpOnly` refresh cookie; a full browser reload therefore returns to an unauthenticated state instead of persisting sensitive tokens in browser storage. Ticketing, notifications, admission scanning, and organizer/administrator management features remain planned.
+Route placeholders prove the remaining application hierarchy without implementing later product functionality. Authentication credentials stay only in memory because the backend does not provide an `HttpOnly` refresh cookie; a full browser reload therefore returns to an unauthenticated state instead of persisting sensitive tokens in browser storage. Notifications, admission scanning, and organizer/administrator management features remain planned.
 
 See [DESIGN.md](DESIGN.md) for the implemented visual language and component guidance.
 See [API.md](API.md) for API configuration, transport, errors, pagination, authentication integration, and server-state conventions.
 See [AUTH.md](AUTH.md) for login, registration, refresh, logout, protected-route, and token-handling behavior.
 See [BOOKING.md](BOOKING.md) for seat-selection states, checkout idempotency, sandbox payment outcomes, and server-authoritative pricing.
+See [TICKETS.md](TICKETS.md) for digital-ticket states, QR presentation, and token-security boundaries.
 
 ## Local development
 

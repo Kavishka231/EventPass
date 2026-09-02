@@ -140,6 +140,7 @@ export function BookingOverview({
               className="button link-button"
               data-size="medium"
               data-variant="primary"
+              state={{ bookingId: booking.id }}
               to="/tickets"
             >
               View tickets

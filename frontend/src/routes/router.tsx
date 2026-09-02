@@ -10,6 +10,7 @@ import { EventDiscoveryPage } from '../pages/EventDiscoveryPage';
 import { EventDetailsPage } from '../pages/EventDetailsPage';
 import { HomePage } from '../pages/HomePage';
 import { SeatSelectionPage } from '../pages/SeatSelectionPage';
+import { TicketsPage } from '../pages/TicketsPage';
 import { PlaceholderPage } from '../pages/PlaceholderPage';
 import { NotFoundPage, UnauthorizedPage } from '../pages/SystemPage';
 import { RouteGuard } from './RouteGuard';
@@ -127,13 +128,7 @@ export const router = createBrowserRouter([
       },
       {
         path: 'tickets',
-        element: (
-          <PlaceholderPage
-            group="Customer"
-            title="My tickets"
-            description="Secure digital ticket presentation will be implemented later."
-          />
-        ),
+        element: <TicketsPage />,
       },
       {
         path: 'notifications',
