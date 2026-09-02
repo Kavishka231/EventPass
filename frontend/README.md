@@ -34,6 +34,8 @@ The frontend consumes the backend under `/api/v1`. Backend authorization, availa
 - Refresh-safe booking confirmation, newest-first paginated history, enriched owned booking details, cancellation eligibility, duplicate-safe cancellation, and durable payment/refund feedback without browser-side event or inventory joins
 - Secure paginated digital tickets backed by enriched owned projections, active-only QR presentation, booking/event/venue/seat context, clear used/cancelled states, and memory-only QR handling
 - Customer notification center with newest-first pagination, accessible read state, synchronized unread navigation count, and authoritative mark-as-read handling
+- Vitest, React Testing Library, user-event, jest-dom, MSW, and axe-core coverage for authentication, session recovery, discovery, booking, ticket security, notifications, and critical accessibility states
+- Playwright Chromium coverage for the register-to-ticket customer journey and inactive-ticket QR secrecy using deterministic mocked backend API contracts
 
 Route placeholders prove the remaining application hierarchy without implementing later product functionality. Authentication credentials stay only in memory because the backend does not provide an `HttpOnly` refresh cookie; a full browser reload therefore returns to an unauthenticated state instead of persisting sensitive tokens in browser storage. Admission scanning and organizer/administrator management features remain planned.
 
@@ -59,12 +61,15 @@ npm run dev
 
 ```shell
 npm run format:check
+npm test
+npm run test:coverage
 npm run lint
 npm run typecheck
 npm run build
+npm run test:e2e
 ```
 
-Automated frontend testing is planned but is not configured yet. There is currently no `npm test` script.
+Unit and component tests use MSW at the network boundary with response fixtures matching the backend DTOs. Playwright builds and serves the production frontend, then intercepts `/api/v1` requests with the same deterministic contracts; it does not start or claim verification against a real backend. Backend Testcontainers coverage remains responsible for the real database, Redis, Kafka, HTTP, concurrency, and API-contract integration.
 
 ## Source structure
 
@@ -78,7 +83,9 @@ frontend/
 |   |-- lib/          Framework-independent helpers and environment access
 |   |-- pages/        Route-level screens
 |   |-- routes/       Route hierarchy and UX-only access guards
+|   |-- test/         Vitest setup, MSW handlers, fixtures, utilities, and behavior/accessibility suites
 |   `-- styles/       Tokens, base rules, components, and responsive layout
+|-- e2e/              Playwright critical customer journeys
 |-- .env.example
 |-- eslint.config.js
 |-- package.json
