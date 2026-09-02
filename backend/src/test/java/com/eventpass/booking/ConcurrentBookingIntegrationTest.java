@@ -900,6 +900,9 @@ class ConcurrentBookingIntegrationTest {
         .andExpect(jsonPath("$.content.length()").value(1))
         .andExpect(jsonPath("$.content[0].id").isString())
         .andExpect(jsonPath("$.content[0].status").value("CONFIRMED"))
+        .andExpect(jsonPath("$.content[0].event.name").isString())
+        .andExpect(jsonPath("$.content[0].venue.name").isString())
+        .andExpect(jsonPath("$.content[0].seatCount").value(1))
         .andExpect(jsonPath("$.number").value(0))
         .andExpect(jsonPath("$.size").value(1))
         .andExpect(jsonPath("$.totalElements").value(2));
@@ -914,6 +917,11 @@ class ConcurrentBookingIntegrationTest {
         .andExpect(jsonPath("$.content.length()").value(1))
         .andExpect(jsonPath("$.content[0].bookingId").isString())
         .andExpect(jsonPath("$.content[0].status").value("ACTIVE"))
+        .andExpect(jsonPath("$.content[0].bookingReference").isString())
+        .andExpect(jsonPath("$.content[0].event.name").isString())
+        .andExpect(jsonPath("$.content[0].venue.name").isString())
+        .andExpect(jsonPath("$.content[0].seat.number").isString())
+        .andExpect(jsonPath("$.content[0].qrToken").isString())
         .andExpect(jsonPath("$.number").value(0))
         .andExpect(jsonPath("$.size").value(1))
         .andExpect(jsonPath("$.totalElements").value(2));
@@ -1021,13 +1029,69 @@ class ConcurrentBookingIntegrationTest {
     var bookingPage = service.list(first.customer(), PageRequest.of(0, 20));
     assertThat(bookingPage.getContent()).hasSize(2);
     assertThat(bookingPage.getContent())
-        .allSatisfy(booking -> assertThat(booking.eventSeatIds()).hasSize(1));
-    assertThat(statistics.getPrepareStatementCount()).isEqualTo(2);
+        .allSatisfy(booking -> assertThat(booking.seatCount()).isEqualTo(1));
+    assertThat(statistics.getPrepareStatementCount()).isEqualTo(1);
 
     statistics.clear();
     var ticketPage = ticketService.list(first.customer(), PageRequest.of(0, 20));
     assertThat(ticketPage.getContent()).hasSize(2);
     assertThat(statistics.getPrepareStatementCount()).isEqualTo(1);
+  }
+
+  @Test
+  void customerBookingAndTicketDetailsAreOwnedEnrichedAndQrSafe() throws Exception {
+    BookingFixture fixture = fixture();
+    BookingController.BookingResponse booking =
+        service.create(fixture.request(), "projection-" + UUID.randomUUID(), fixture.customer());
+    com.eventpass.ticket.Ticket ticket = tickets.findAllByBookingId(booking.id()).getFirst();
+    User otherCustomer =
+        user("projection-other-" + UUID.randomUUID() + "@example.com", User.Role.CUSTOMER);
+
+    mockMvc
+        .perform(
+            get("/api/v1/bookings/{id}", booking.id())
+                .header("Authorization", bearer(fixture.customer())))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.event.id").value(fixture.event().getId().toString()))
+        .andExpect(jsonPath("$.event.name").value(fixture.event().getName()))
+        .andExpect(jsonPath("$.venue.id").value(fixture.event().getVenue().getId().toString()))
+        .andExpect(jsonPath("$.seats[0].eventSeatId").value(fixture.eventSeat().getId().toString()))
+        .andExpect(
+            jsonPath("$.seats[0].number").value(fixture.eventSeat().getSeat().getSeatNumber()))
+        .andExpect(jsonPath("$.payment.status").value("SUCCESS"));
+
+    mockMvc
+        .perform(
+            get("/api/v1/bookings/{id}", booking.id())
+                .header("Authorization", bearer(otherCustomer)))
+        .andExpect(status().isNotFound());
+
+    mockMvc
+        .perform(
+            get("/api/v1/tickets/{id}", ticket.getId())
+                .header("Authorization", bearer(fixture.customer())))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.bookingReference").value(booking.reference()))
+        .andExpect(jsonPath("$.event.name").value(fixture.event().getName()))
+        .andExpect(jsonPath("$.seat.number").value(fixture.eventSeat().getSeat().getSeatNumber()))
+        .andExpect(jsonPath("$.qrToken").value(ticket.getQrToken()));
+
+    mockMvc
+        .perform(
+            get("/api/v1/tickets/{id}", ticket.getId())
+                .header("Authorization", bearer(otherCustomer)))
+        .andExpect(status().isNotFound());
+
+    ticket.setStatus(com.eventpass.ticket.Ticket.Status.USED);
+    ticket.setUsedAt(Instant.now());
+    tickets.saveAndFlush(ticket);
+    mockMvc
+        .perform(
+            get("/api/v1/tickets/{id}", ticket.getId())
+                .header("Authorization", bearer(fixture.customer())))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.status").value("USED"))
+        .andExpect(jsonPath("$.qrToken").doesNotExist());
   }
 
   @Test
