@@ -45,6 +45,12 @@ export const queryKeys = {
   },
   organizer: {
     all: ['organizer'] as const,
+    events: (pagination: PaginationParameters) =>
+      [...queryKeys.organizer.all, 'events', pagination] as const,
+    event: (eventId: Uuid) =>
+      [...queryKeys.organizer.all, 'event', eventId] as const,
+    inventory: (eventId: Uuid) =>
+      [...queryKeys.organizer.event(eventId), 'inventory'] as const,
     eventBookings: (eventId: Uuid, pagination: PaginationParameters) =>
       [
         ...queryKeys.organizer.all,
