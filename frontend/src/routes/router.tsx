@@ -2,6 +2,16 @@ import { createBrowserRouter } from 'react-router-dom';
 
 import { CustomerShell, PublicShell, WorkspaceShell } from '../layouts';
 import { LoginPage, RegistrationPage } from '../pages/AuthenticationPage';
+import {
+  AdminBookingPage,
+  AdminBookingsPage,
+  AdminDashboardPage,
+  AdminEventPage,
+  AdminEventsPage,
+  AdminUsersPage,
+  AdminVenuePage,
+  AdminVenuesPage,
+} from '../pages/AdminPages';
 import { BookingConfirmationPage } from '../pages/BookingConfirmationPage';
 import { BookingDetailsPage } from '../pages/BookingDetailsPage';
 import { BookingHistoryPage } from '../pages/BookingHistoryPage';
@@ -20,7 +30,6 @@ import {
 } from '../pages/OrganizerPages';
 import { SeatSelectionPage } from '../pages/SeatSelectionPage';
 import { TicketsPage } from '../pages/TicketsPage';
-import { PlaceholderPage } from '../pages/PlaceholderPage';
 import { NotFoundPage, UnauthorizedPage } from '../pages/SystemPage';
 import { RouteGuard } from './RouteGuard';
 
@@ -67,6 +76,7 @@ export const applicationRoutes = {
     '/admin/venues',
     '/admin/venues/:venueId',
     '/admin/events',
+    '/admin/events/:eventId',
     '/admin/bookings',
     '/admin/bookings/:bookingId',
   ],
@@ -184,73 +194,35 @@ export const router = createBrowserRouter([
     children: [
       {
         path: 'admin',
-        element: (
-          <PlaceholderPage
-            group="Administrator"
-            title="Platform overview"
-            description="Platform statistics will be implemented in the administrator feature."
-          />
-        ),
+        element: <AdminDashboardPage />,
       },
       {
         path: 'admin/users',
-        element: (
-          <PlaceholderPage
-            group="Administrator"
-            title="User management"
-            description="Administrator user lifecycle controls will be implemented later."
-          />
-        ),
+        element: <AdminUsersPage />,
       },
       {
         path: 'admin/venues',
-        element: (
-          <PlaceholderPage
-            group="Administrator"
-            title="Venue management"
-            description="Venue administration will be implemented later."
-          />
-        ),
+        element: <AdminVenuesPage />,
       },
       {
         path: 'admin/venues/:venueId',
-        element: (
-          <PlaceholderPage
-            group="Administrator"
-            title="Venue details"
-            description="Venue and physical-seat management will be implemented later."
-          />
-        ),
+        element: <AdminVenuePage />,
       },
       {
         path: 'admin/events',
-        element: (
-          <PlaceholderPage
-            group="Administrator"
-            title="Event management"
-            description="Administrator event operations will be implemented later."
-          />
-        ),
+        element: <AdminEventsPage />,
+      },
+      {
+        path: 'admin/events/:eventId',
+        element: <AdminEventPage />,
       },
       {
         path: 'admin/bookings',
-        element: (
-          <PlaceholderPage
-            group="Administrator"
-            title="Booking management"
-            description="Platform booking management will be implemented later."
-          />
-        ),
+        element: <AdminBookingsPage />,
       },
       {
         path: 'admin/bookings/:bookingId',
-        element: (
-          <PlaceholderPage
-            group="Administrator"
-            title="Booking details"
-            description="Administrative booking detail and cancellation will be implemented later."
-          />
-        ),
+        element: <AdminBookingPage />,
       },
     ],
   },

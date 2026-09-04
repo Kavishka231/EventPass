@@ -19,6 +19,7 @@ The frontend consumes the backend under `/api/v1`. Backend authorization, availa
 - Accessible desktop navigation, modal mobile navigation, skip links, and public footer
 - Semantic placeholders for every planned route plus polished `403` and `404` states
 - Ownership-scoped organizer event, inventory, pricing, seat-blocking, and booking-report workflows
+- Administrator user lifecycle, venue/seat, event, and booking management workflows
 - Central API transport with runtime response decoding, timeouts, cancellation, and typed safe errors
 - Request/correlation ID propagation and rate-limit response metadata
 - Backend-derived domain and Spring pagination transport types
