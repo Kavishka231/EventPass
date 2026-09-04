@@ -1,0 +1,113 @@
+.organizer-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: var(--space-6);
+  margin-bottom: var(--space-8);
+}
+.organizer-heading h1 {
+  margin: 0.2rem 0;
+}
+.organizer-heading p:last-child {
+  color: var(--color-text-muted);
+}
+.organizer-event-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.organizer-card-title {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-4);
+  align-items: flex-start;
+}
+.organizer-card-title h2 {
+  margin: 0.25rem 0 0;
+}
+.organizer-actions {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  align-items: center;
+}
+.organizer-card-skeleton {
+  min-height: 15rem;
+}
+.organizer-form-skeleton,
+.organizer-table-skeleton {
+  min-height: 24rem;
+}
+.organizer-form {
+  padding: var(--space-8);
+}
+.organizer-form fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+.organizer-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-5);
+}
+.organizer-form-grid .field-label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.organizer-full-field {
+  grid-column: 1/-1;
+}
+.danger-zone {
+  margin-top: var(--space-10);
+  border: 1px solid var(--color-error);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+}
+.inventory-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.inventory-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+.organizer-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--color-surface);
+}
+.organizer-table th,
+.organizer-table td {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+  text-align: left;
+  vertical-align: middle;
+}
+.organizer-table th {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+.organizer-table td small {
+  display: block;
+  color: var(--color-text-muted);
+}
+.organizer-table .field-control {
+  min-width: 7rem;
+}
+@media (max-width: 40rem) {
+  .organizer-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .organizer-form-grid {
+    grid-template-columns: 1fr;
+  }
+  .organizer-full-field {
+    grid-column: auto;
+  }
+}

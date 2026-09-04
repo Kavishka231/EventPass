@@ -11,6 +11,13 @@ import { EventDiscoveryPage } from '../pages/EventDiscoveryPage';
 import { EventDetailsPage } from '../pages/EventDetailsPage';
 import { HomePage } from '../pages/HomePage';
 import { NotificationsPage } from '../pages/NotificationsPage';
+import {
+  OrganizerBookingsPage,
+  OrganizerDashboardPage,
+  OrganizerEventFormPage,
+  OrganizerEventsPage,
+  OrganizerInventoryPage,
+} from '../pages/OrganizerPages';
 import { SeatSelectionPage } from '../pages/SeatSelectionPage';
 import { TicketsPage } from '../pages/TicketsPage';
 import { PlaceholderPage } from '../pages/PlaceholderPage';
@@ -141,63 +148,27 @@ export const router = createBrowserRouter([
     children: [
       {
         path: 'organizer',
-        element: (
-          <PlaceholderPage
-            group="Organizer"
-            title="Organizer overview"
-            description="Organizer reporting and activity will be implemented later."
-          />
-        ),
+        element: <OrganizerDashboardPage />,
       },
       {
         path: 'organizer/events',
-        element: (
-          <PlaceholderPage
-            group="Organizer"
-            title="My events"
-            description="Organizer-owned event management will be implemented later."
-          />
-        ),
+        element: <OrganizerEventsPage />,
       },
       {
         path: 'organizer/events/new',
-        element: (
-          <PlaceholderPage
-            group="Organizer"
-            title="Create event"
-            description="Event creation will be implemented in the organizer feature."
-          />
-        ),
+        element: <OrganizerEventFormPage />,
       },
       {
         path: 'organizer/events/:eventId/edit',
-        element: (
-          <PlaceholderPage
-            group="Organizer"
-            title="Edit event"
-            description="Owned-event editing will be implemented in the organizer feature."
-          />
-        ),
+        element: <OrganizerEventFormPage />,
       },
       {
         path: 'organizer/events/:eventId/inventory',
-        element: (
-          <PlaceholderPage
-            group="Organizer"
-            title="Event inventory"
-            description="Seat pricing and blocking will be implemented later."
-          />
-        ),
+        element: <OrganizerInventoryPage />,
       },
       {
         path: 'organizer/events/:eventId/bookings',
-        element: (
-          <PlaceholderPage
-            group="Organizer"
-            title="Event booking report"
-            description="Owned-event booking reports will be implemented later."
-          />
-        ),
+        element: <OrganizerBookingsPage />,
       },
     ],
   },
