@@ -2,9 +2,9 @@
 
 MVP verification evidence is recorded in [`MVP_READINESS.md`](MVP_READINESS.md).
 
-EventPass is organized as a monorepo with separate backend and frontend workspaces. The Java 21/Spring Boot backend supports registration, JWT login/refresh/logout, published-event browsing, event seat inventory, idempotent booking, sandbox payment, cancellation, and digital ticket retrieval. The frontend workspace is reserved for the upcoming web application.
+EventPass is a completed MVP organized as a monorepo with Java 21/Spring Boot and React/TypeScript workspaces. Customers can register, restore secure browser sessions, browse events and seats, complete idempotent sandbox-payment bookings, manage cancellations, receive notifications, and retrieve digital tickets. Organizers manage owned events, inventory, pricing, booking reports, and admission. Administrators manage users, roles, account status, venues, physical seats, events, and bookings.
 
-## Backend milestone status
+## MVP capabilities
 
 The backend now includes:
 
@@ -41,15 +41,16 @@ eventpass/
 
 ## Run locally
 
-1. Install Java 21 and Docker.
+1. Install Java 21, Node.js 22, and Docker.
 2. Copy `backend/.env.example` to `.env` in the repository root and replace `JWT_SECRET` with at least 32 random characters.
 3. Start infrastructure: `docker compose up -d postgres redis kafka`.
 4. Enter `backend/` and run the API: `mvn spring-boot:run -Dspring-boot.run.profiles=dev`.
-5. Open Swagger UI at `http://localhost:8080/swagger-ui.html`.
+5. Enter `frontend/`, run `npm ci` and `npm run dev`, then open the Vite URL shown in the terminal.
+6. Swagger UI is available at `http://localhost:8080/swagger-ui.html` outside production.
 
 To create the first administrator, set `BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD` before the first startup. Remove those values after the account has been created.
 
-Run backend formatting and tests from `backend/` with `mvn spotless:check verify`. Integration tests use Testcontainers and skip only when Docker is unavailable.
+Run backend formatting and tests from `backend/` with `mvn spotless:check verify`. Docker is required for Testcontainers integration tests. From `frontend/`, use `npm test`, `npm run lint`, `npm run typecheck`, `npm run build`, and `npm run test:e2e`.
 
 The `backend-security` GitHub Actions workflow runs on feature branches, pull requests, `main`, a weekly schedule, and manual dispatch. High or critical findings fail the relevant dependency, repository, or container gate; each container run retains a CycloneDX SBOM artifact for 30 days. CodeQL result upload requires GitHub code scanning to be available for the repository.
 
