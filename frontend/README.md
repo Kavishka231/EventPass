@@ -1,6 +1,6 @@
 # EventPass Frontend
 
-EventPass is a React and TypeScript web application for the existing EventPass API. The frontend currently contains the production application foundation and reusable visual design system; customer, organizer, and administrator product flows will be implemented in later feature commits.
+EventPass is a React and TypeScript web application for the existing EventPass API. The frontend provides completed customer, organizer, administrator, and admission workflows on a reusable visual design system.
 
 The frontend consumes the backend under `/api/v1`. Backend authorization, availability, inventory, booking and payment state, and server-calculated pricing remain authoritative.
 
@@ -17,7 +17,7 @@ The frontend consumes the backend under `/api/v1`. Backend authorization, availa
 - Responsive public, customer, organizer, administrator, and admission shells
 - Declarative route groups with UX-only session and role guards
 - Accessible desktop navigation, modal mobile navigation, skip links, and public footer
-- Semantic placeholders for every planned route plus polished `403` and `404` states
+- Complete role-scoped routes plus polished `403` and `404` states
 - Ownership-scoped organizer event, inventory, pricing, seat-blocking, and booking-report workflows
 - Administrator user lifecycle, venue/seat, event, and booking management workflows
 - Central API transport with runtime response decoding, timeouts, cancellation, and typed safe errors
@@ -40,7 +40,7 @@ The frontend consumes the backend under `/api/v1`. Backend authorization, availa
 - Vitest, React Testing Library, user-event, jest-dom, MSW, and axe-core coverage for authentication, session recovery, discovery, booking, ticket security, notifications, and critical accessibility states
 - Playwright Chromium coverage for the register-to-ticket customer journey and inactive-ticket QR secrecy using deterministic mocked backend API contracts
 
-Route placeholders prove the remaining application hierarchy without implementing later product functionality. Access tokens stay only in memory. Browser sessions are restored through a rotating refresh token held in a scoped `HttpOnly` cookie; refresh and logout use the credentialed API transport and a CSRF cookie/header pair. No authentication token is stored in local storage, session storage, or IndexedDB. Admission scanning and organizer/administrator management features remain planned.
+Access tokens stay only in memory. Browser sessions are restored through a rotating refresh token held in a scoped `HttpOnly` cookie; refresh and logout use the credentialed API transport and a CSRF cookie/header pair. No authentication token is stored in local storage, session storage, or IndexedDB. Organizer and administrator management workflows and role-scoped admission scanning are implemented against the backend's authorization and ownership rules.
 
 See [DESIGN.md](DESIGN.md) for the implemented visual language and component guidance.
 See [API.md](API.md) for API configuration, transport, errors, pagination, authentication integration, and server-state conventions.
