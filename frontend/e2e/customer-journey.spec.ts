@@ -296,7 +296,7 @@ test('organizer validates and explicitly redeems a ticket without URL leakage', 
 }) => {
   const token = 'e2e-admission-secret';
   await mockApi(page, 'ACTIVE', 'ORGANIZER');
-  await login(page, 'Organizer overview');
+  await login(page, 'Workspace overview');
   await page.goto('/admission');
   await page.getByLabel('Event', { exact: true }).selectOption(ids.event);
   await page.getByLabel('Ticket token').fill(token);

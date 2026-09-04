@@ -1,5 +1,7 @@
 # EventPass
 
+MVP verification evidence is recorded in [`MVP_READINESS.md`](MVP_READINESS.md).
+
 EventPass is organized as a monorepo with separate backend and frontend workspaces. The Java 21/Spring Boot backend supports registration, JWT login/refresh/logout, published-event browsing, event seat inventory, idempotent booking, sandbox payment, cancellation, and digital ticket retrieval. The frontend workspace is reserved for the upcoming web application.
 
 ## Backend milestone status

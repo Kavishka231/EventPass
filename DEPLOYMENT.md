@@ -1,5 +1,7 @@
 # Deployment
 
+Local Compose exposes Kafka to host tools at `localhost:9092` and advertises a separate container-network listener at `kafka:29092`. The application profile uses the internal listener and waits for broker health before startup.
+
 The backend multi-stage Dockerfile at `backend/Dockerfile` builds on JDK 21 and runs on a non-root JRE 21 Alpine user with a liveness health check. Root-level `compose.yml` provides PostgreSQL, Redis, Apache Kafka, and an optional application profile using `backend/` as its build context.
 
 Set `DATABASE_URL`, `DATABASE_USERNAME`, `DATABASE_PASSWORD`, `REDIS_HOST`, `REDIS_PORT`, `KAFKA_BOOTSTRAP_SERVERS`, and a cryptographically random `JWT_SECRET` of at least 32 bytes. Set stable deployment-specific `JWT_ISSUER`, `JWT_AUDIENCE`, and `JWT_SIGNING_KEY_ID` values; changing any of them invalidates existing access tokens. Readiness includes dependency indicators; liveness uses only application process state. Persist PostgreSQL independently and terminate HTTP TLS at the ingress/load balancer.
