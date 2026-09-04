@@ -5,18 +5,12 @@ import { BookingOverview } from '../components/booking';
 import { Container, Section } from '../components/layout';
 import { Alert, Button, Dialog, ErrorState, Skeleton } from '../components/ui';
 import { useBooking, useCancelBooking } from '../features/bookings';
-import { useEvent, useEventSeats } from '../features/events';
 import { isApiError } from '../services/api';
 
 export function BookingDetailsPage() {
   const navigate = useNavigate();
   const bookingId = useParams().bookingId ?? '';
   const booking = useBooking(bookingId);
-  const event = useEvent(booking.data?.eventId ?? '', Boolean(booking.data));
-  const seats = useEventSeats(
-    booking.data?.eventId ?? '',
-    Boolean(booking.data),
-  );
   const cancellation = useCancelBooking();
   const submitting = useRef(false);
   const [confirming, setConfirming] = useState(false);
@@ -57,10 +51,10 @@ export function BookingDetailsPage() {
     );
   }
 
-  const startsAt = event.data ? new Date(event.data.startDateTime) : null;
+  const startsAt = new Date(booking.data.event.startDateTime);
   const cancellationWindowOpen =
     booking.data.status === 'CONFIRMED' &&
-    Boolean(startsAt && startsAt.getTime() > Date.now() + 24 * 60 * 60 * 1000);
+    startsAt.getTime() > Date.now() + 24 * 60 * 60 * 1000;
   const cancellationError = isApiError(cancellation.error)
     ? cancellation.error
     : null;
@@ -124,12 +118,7 @@ export function BookingDetailsPage() {
           </Alert>
         ) : null}
 
-        <BookingOverview
-          booking={booking.data}
-          event={event.data}
-          seats={seats.data}
-          showTicketAction
-        />
+        <BookingOverview booking={booking.data} showTicketAction />
 
         <div className="booking-cancellation-panel">
           <div>
@@ -183,8 +172,8 @@ export function BookingDetailsPage() {
         >
           <p>
             Booking <strong>{booking.data.reference}</strong> for{' '}
-            {booking.data.eventSeatIds.length}{' '}
-            {booking.data.eventSeatIds.length === 1 ? 'seat' : 'seats'} will be
+            {booking.data.seats.length}{' '}
+            {booking.data.seats.length === 1 ? 'seat' : 'seats'} will be
             cancelled.
           </p>
         </Dialog>

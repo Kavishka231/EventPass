@@ -5,6 +5,10 @@ export interface NavigationItem {
   label: string;
   to: string;
   end?: boolean;
+  badge?: {
+    text: string;
+    accessibleLabel: string;
+  };
 }
 
 export function NavigationLinks({
@@ -26,7 +30,15 @@ export function NavigationLinks({
               isActive ? 'navigation-link is-active' : 'navigation-link'
             }
           >
-            {item.label}
+            <span>{item.label}</span>
+            {item.badge ? (
+              <span
+                className="navigation-badge"
+                aria-label={item.badge.accessibleLabel}
+              >
+                {item.badge.text}
+              </span>
+            ) : null}
           </NavLink>
         </li>
       ))}

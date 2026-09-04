@@ -1,24 +1,21 @@
 import { createBrowserRouter } from 'react-router-dom';
 
-import { PublicShell, WorkspaceShell } from '../layouts';
+import { CustomerShell, PublicShell, WorkspaceShell } from '../layouts';
 import { LoginPage, RegistrationPage } from '../pages/AuthenticationPage';
 import { BookingConfirmationPage } from '../pages/BookingConfirmationPage';
 import { BookingDetailsPage } from '../pages/BookingDetailsPage';
 import { BookingHistoryPage } from '../pages/BookingHistoryPage';
+import { AdmissionPage } from '../pages/AdmissionPage';
 import { CheckoutPage } from '../pages/CheckoutPage';
 import { EventDiscoveryPage } from '../pages/EventDiscoveryPage';
 import { EventDetailsPage } from '../pages/EventDetailsPage';
 import { HomePage } from '../pages/HomePage';
+import { NotificationsPage } from '../pages/NotificationsPage';
 import { SeatSelectionPage } from '../pages/SeatSelectionPage';
+import { TicketsPage } from '../pages/TicketsPage';
 import { PlaceholderPage } from '../pages/PlaceholderPage';
 import { NotFoundPage, UnauthorizedPage } from '../pages/SystemPage';
 import { RouteGuard } from './RouteGuard';
-
-const customerNavigation = [
-  { label: 'Bookings', to: '/bookings' },
-  { label: 'Tickets', to: '/tickets' },
-  { label: 'Notifications', to: '/notifications' },
-];
 
 const organizerNavigation = [
   { label: 'Overview', to: '/organizer', end: true },
@@ -105,7 +102,7 @@ export const router = createBrowserRouter([
   {
     element: (
       <RouteGuard roles={['CUSTOMER']}>
-        <WorkspaceShell label="My EventPass" navigation={customerNavigation} />
+        <CustomerShell />
       </RouteGuard>
     ),
     children: [
@@ -127,23 +124,11 @@ export const router = createBrowserRouter([
       },
       {
         path: 'tickets',
-        element: (
-          <PlaceholderPage
-            group="Customer"
-            title="My tickets"
-            description="Secure digital ticket presentation will be implemented later."
-          />
-        ),
+        element: <TicketsPage />,
       },
       {
         path: 'notifications',
-        element: (
-          <PlaceholderPage
-            group="Customer"
-            title="Notifications"
-            description="Customer notification management will be implemented later."
-          />
-        ),
+        element: <NotificationsPage />,
       },
     ],
   },
@@ -307,13 +292,7 @@ export const router = createBrowserRouter([
     children: [
       {
         path: 'admission',
-        element: (
-          <PlaceholderPage
-            group="Admission"
-            title="Ticket admission"
-            description="Secure validation and redemption scanning will be implemented later."
-          />
-        ),
+        element: <AdmissionPage />,
       },
     ],
   },

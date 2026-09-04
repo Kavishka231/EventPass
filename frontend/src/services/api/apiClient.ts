@@ -184,7 +184,7 @@ export class ApiClient {
             ? undefined
             : JSON.stringify(configuration.body),
         signal: controller.signal,
-        credentials: 'omit',
+        credentials: 'include',
       });
       const body = await readResponseBody(response);
       const responseRequestId =

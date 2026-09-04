@@ -4,8 +4,7 @@ import { BookingStatusBadge, paymentOutcome } from '../components/booking';
 import { Container, Section } from '../components/layout';
 import { Button, EmptyState, ErrorState, Skeleton } from '../components/ui';
 import { useBookings } from '../features/bookings';
-import { useEvent } from '../features/events';
-import type { BookingResponse } from '../types';
+import type { CustomerBookingSummary } from '../types';
 
 const PAGE_SIZE = 20;
 
@@ -14,9 +13,8 @@ function requestedPage(value: string | null) {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : 1;
 }
 
-function BookingHistoryCard({ booking }: { booking: BookingResponse }) {
-  const event = useEvent(booking.eventId);
-  const startsAt = event.data ? new Date(event.data.startDateTime) : null;
+function BookingHistoryCard({ booking }: { booking: CustomerBookingSummary }) {
+  const startsAt = new Date(booking.event.startDateTime);
   const total = new Intl.NumberFormat(undefined, {
     style: 'currency',
     currency: booking.currency,
@@ -28,31 +26,24 @@ function BookingHistoryCard({ booking }: { booking: BookingResponse }) {
       <div className="booking-history-card-heading">
         <div>
           <p className="discovery-eyebrow">{booking.reference}</p>
-          <h2>{event.data?.name ?? 'Event booking'}</h2>
+          <h2>{booking.event.name}</h2>
         </div>
         <BookingStatusBadge status={booking.status} />
       </div>
       <div className="booking-history-meta">
         <span>
-          {startsAt
-            ? startsAt.toLocaleString(undefined, {
-                dateStyle: 'medium',
-                timeStyle: 'short',
-              })
-            : event.isPending
-              ? 'Loading event details…'
-              : 'Event details unavailable'}
+          {startsAt.toLocaleString(undefined, {
+            dateStyle: 'medium',
+            timeStyle: 'short',
+          })}
         </span>
         <span>
-          {event.data
-            ? `${event.data.venueName}, ${event.data.city}`
-            : 'Venue unavailable'}
+          {booking.venue.name}, {booking.venue.city}
         </span>
       </div>
       <div className="booking-history-summary">
         <span>
-          {booking.eventSeatIds.length}{' '}
-          {booking.eventSeatIds.length === 1 ? 'seat' : 'seats'}
+          {booking.seatCount} {booking.seatCount === 1 ? 'seat' : 'seats'}
         </span>
         <span>{paymentOutcome(booking.status)}</span>
         <strong>{total}</strong>

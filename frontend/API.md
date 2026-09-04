@@ -96,6 +96,16 @@ Checkout handles the backend's `SEAT_UNAVAILABLE`, `EVENT_NOT_BOOKABLE`, `PAYMEN
 
 Customer booking management uses authenticated `GET /bookings`, `GET /bookings/{bookingId}`, and `POST /bookings/{bookingId}/cancel`. Lists explicitly request `createdAt,desc`, page size 20, and preserve page state in the URL. Cancellation has no client-generated financial payload and consumes the backend's empty `204` response. Success invalidates all customer booking queries plus affected ticket and event data; `BOOKING_NOT_CANCELLABLE`, `PAYMENT_NOT_REFUNDABLE`, `REFUND_PENDING`, `REFUND_FAILED`, and `REFUND_OUTCOME_UNKNOWN` remain authoritative workflow results.
 
+## Customer tickets
+
+The ticket feature uses authenticated `GET /tickets` with page size 20 and `issuedAt,desc` ordering. Its strict decoder accepts only the backend's `ACTIVE`, `USED`, and `CANCELLED` states. The API response's QR token is passed directly to the active-ticket QR renderer in memory and is never included in cache persistence, storage, URLs, logs, analytics, or error content. No client-side validation or redemption behavior is implemented.
+
+## Customer notifications
+
+The notification feature uses customer-only `GET /notifications`, `GET /notifications/unread-count`, and `PATCH /notifications/{notificationId}/read`. Lists request 20 newest-first records per page. Strict decoders validate identifiers, non-empty content, timestamps, nullable `readAt`, a safe non-negative unread count, and the shared Spring page envelope. Successful mark-as-read invalidates list and count query families; mutation failures do not alter the displayed read state.
+
+The response does not expose delivery status or related entity identifiers, so the frontend neither displays internal delivery lifecycle nor fabricates booking, ticket, payment, or event links from unstructured notification text.
+
 ## Actual backend areas represented
 
 The shared types are derived from the current authentication, event, venue, seat/inventory, booking, ticket/admission, notification, organizer booking-report, administrator user/statistics/booking, pagination, security, and error controllers. There are no frontend payment or refund service models because the backend exposes those operations through booking workflows rather than public payment/refund endpoints.

@@ -24,5 +24,17 @@ export default defineConfig(({ mode }) => {
     build: {
       sourcemap: true,
     },
+    test: {
+      environment: 'jsdom',
+      setupFiles: './src/test/setup.ts',
+      exclude: ['e2e/**', 'node_modules/**', 'dist/**'],
+      css: true,
+      coverage: {
+        provider: 'v8',
+        reporter: ['text', 'html', 'lcov'],
+        reportsDirectory: './coverage',
+        exclude: ['src/test/**', 'src/vite-env.d.ts', 'src/main.tsx'],
+      },
+    },
   };
 });

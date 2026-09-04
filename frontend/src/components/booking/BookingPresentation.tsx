@@ -1,14 +1,8 @@
 import { Link } from 'react-router-dom';
 
-import type {
-  BookingResponse,
-  BookingStatus,
-  EventResponse,
-  EventSeatResponse,
-} from '../../types';
+import type { BookingStatus, CustomerBookingDetails } from '../../types';
 import { Badge, Panel } from '../ui';
 import { paymentOutcome, refundOutcome } from './bookingStatus';
-import { seatDisplayName } from './seatPresentation';
 
 const statusTone = {
   PENDING: 'warning',
@@ -39,20 +33,15 @@ function money(amount: number, currency: string) {
 }
 
 interface BookingOverviewProps {
-  booking: BookingResponse;
-  event?: EventResponse;
-  seats?: EventSeatResponse[];
+  booking: CustomerBookingDetails;
   showTicketAction?: boolean;
 }
 
 export function BookingOverview({
   booking,
-  event,
-  seats,
   showTicketAction = false,
 }: BookingOverviewProps) {
-  const seatsById = new Map(seats?.map((seat) => [seat.id, seat]));
-  const startsAt = event ? new Date(event.startDateTime) : null;
+  const startsAt = new Date(booking.event.startDateTime);
 
   return (
     <div className="booking-overview">
@@ -60,7 +49,7 @@ export function BookingOverview({
         <div className="booking-overview-heading">
           <div>
             <p className="discovery-eyebrow">Booking {booking.reference}</p>
-            <h2>{event?.name ?? 'Event booking'}</h2>
+            <h2>{booking.event.name}</h2>
           </div>
           <BookingStatusBadge status={booking.status} />
         </div>
@@ -69,18 +58,16 @@ export function BookingOverview({
           <div>
             <dt>Date and time</dt>
             <dd>
-              {startsAt
-                ? startsAt.toLocaleString(undefined, {
-                    dateStyle: 'long',
-                    timeStyle: 'short',
-                  })
-                : 'Event information unavailable'}
+              {startsAt.toLocaleString(undefined, {
+                dateStyle: 'long',
+                timeStyle: 'short',
+              })}
             </dd>
           </div>
           <div>
             <dt>Venue</dt>
             <dd>
-              {event ? `${event.venueName}, ${event.city}` : 'Unavailable'}
+              {booking.venue.name}, {booking.venue.city}
             </dd>
           </div>
           <div>
@@ -98,11 +85,11 @@ export function BookingOverview({
           </div>
           <div>
             <dt>Payment</dt>
-            <dd>{paymentOutcome(booking.status)}</dd>
+            <dd>{booking.payment?.status ?? paymentOutcome(booking.status)}</dd>
           </div>
           <div>
             <dt>Refund</dt>
-            <dd>{refundOutcome(booking.status)}</dd>
+            <dd>{booking.refund?.status ?? refundOutcome(booking.status)}</dd>
           </div>
         </dl>
 
@@ -112,14 +99,11 @@ export function BookingOverview({
         >
           <h3 id="booked-seats">Seats</h3>
           <ul>
-            {booking.eventSeatIds.map((seatId) => {
-              const seat = seatsById.get(seatId);
+            {booking.seats.map((seat) => {
               return (
-                <li key={seatId}>
-                  <strong>
-                    {seat ? seatDisplayName(seat) : 'Reserved seat'}
-                  </strong>
-                  <span>{seat ? seat.type.toLowerCase() : seatId}</span>
+                <li key={seat.eventSeatId}>
+                  <strong>{`${seat.section} · Row ${seat.row} · Seat ${seat.number}`}</strong>
+                  <span>{seat.type.toLowerCase()}</span>
                 </li>
               );
             })}
@@ -140,6 +124,7 @@ export function BookingOverview({
               className="button link-button"
               data-size="medium"
               data-variant="primary"
+              state={{ bookingId: booking.id }}
               to="/tickets"
             >
               View tickets

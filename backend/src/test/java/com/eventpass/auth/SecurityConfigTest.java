@@ -23,7 +23,8 @@ class SecurityConfigTest {
         .containsExactly("https://customer.eventpass.example", "https://admin.eventpass.example");
     assertThat(cors.getAllowCredentials()).isTrue();
     assertThat(cors.getAllowedOrigins()).doesNotContain("*");
-    assertThat(cors.getAllowedHeaders()).contains("Authorization", "Idempotency-Key");
+    assertThat(cors.getAllowedHeaders())
+        .contains("Authorization", "Idempotency-Key", "X-XSRF-TOKEN");
   }
 
   @Test

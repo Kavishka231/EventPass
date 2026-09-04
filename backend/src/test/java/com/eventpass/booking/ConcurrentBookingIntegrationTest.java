@@ -2,6 +2,7 @@ package com.eventpass.booking;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -51,6 +52,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.containers.GenericContainer;
@@ -900,6 +902,9 @@ class ConcurrentBookingIntegrationTest {
         .andExpect(jsonPath("$.content.length()").value(1))
         .andExpect(jsonPath("$.content[0].id").isString())
         .andExpect(jsonPath("$.content[0].status").value("CONFIRMED"))
+        .andExpect(jsonPath("$.content[0].event.name").isString())
+        .andExpect(jsonPath("$.content[0].venue.name").isString())
+        .andExpect(jsonPath("$.content[0].seatCount").value(1))
         .andExpect(jsonPath("$.number").value(0))
         .andExpect(jsonPath("$.size").value(1))
         .andExpect(jsonPath("$.totalElements").value(2));
@@ -914,6 +919,11 @@ class ConcurrentBookingIntegrationTest {
         .andExpect(jsonPath("$.content.length()").value(1))
         .andExpect(jsonPath("$.content[0].bookingId").isString())
         .andExpect(jsonPath("$.content[0].status").value("ACTIVE"))
+        .andExpect(jsonPath("$.content[0].bookingReference").isString())
+        .andExpect(jsonPath("$.content[0].event.name").isString())
+        .andExpect(jsonPath("$.content[0].venue.name").isString())
+        .andExpect(jsonPath("$.content[0].seat.number").isString())
+        .andExpect(jsonPath("$.content[0].qrToken").isString())
         .andExpect(jsonPath("$.number").value(0))
         .andExpect(jsonPath("$.size").value(1))
         .andExpect(jsonPath("$.totalElements").value(2));
@@ -1021,13 +1031,69 @@ class ConcurrentBookingIntegrationTest {
     var bookingPage = service.list(first.customer(), PageRequest.of(0, 20));
     assertThat(bookingPage.getContent()).hasSize(2);
     assertThat(bookingPage.getContent())
-        .allSatisfy(booking -> assertThat(booking.eventSeatIds()).hasSize(1));
-    assertThat(statistics.getPrepareStatementCount()).isEqualTo(2);
+        .allSatisfy(booking -> assertThat(booking.seatCount()).isEqualTo(1));
+    assertThat(statistics.getPrepareStatementCount()).isEqualTo(1);
 
     statistics.clear();
     var ticketPage = ticketService.list(first.customer(), PageRequest.of(0, 20));
     assertThat(ticketPage.getContent()).hasSize(2);
     assertThat(statistics.getPrepareStatementCount()).isEqualTo(1);
+  }
+
+  @Test
+  void customerBookingAndTicketDetailsAreOwnedEnrichedAndQrSafe() throws Exception {
+    BookingFixture fixture = fixture();
+    BookingController.BookingResponse booking =
+        service.create(fixture.request(), "projection-" + UUID.randomUUID(), fixture.customer());
+    com.eventpass.ticket.Ticket ticket = tickets.findAllByBookingId(booking.id()).getFirst();
+    User otherCustomer =
+        user("projection-other-" + UUID.randomUUID() + "@example.com", User.Role.CUSTOMER);
+
+    mockMvc
+        .perform(
+            get("/api/v1/bookings/{id}", booking.id())
+                .header("Authorization", bearer(fixture.customer())))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.event.id").value(fixture.event().getId().toString()))
+        .andExpect(jsonPath("$.event.name").value(fixture.event().getName()))
+        .andExpect(jsonPath("$.venue.id").value(fixture.event().getVenue().getId().toString()))
+        .andExpect(jsonPath("$.seats[0].eventSeatId").value(fixture.eventSeat().getId().toString()))
+        .andExpect(
+            jsonPath("$.seats[0].number").value(fixture.eventSeat().getSeat().getSeatNumber()))
+        .andExpect(jsonPath("$.payment.status").value("SUCCESS"));
+
+    mockMvc
+        .perform(
+            get("/api/v1/bookings/{id}", booking.id())
+                .header("Authorization", bearer(otherCustomer)))
+        .andExpect(status().isNotFound());
+
+    mockMvc
+        .perform(
+            get("/api/v1/tickets/{id}", ticket.getId())
+                .header("Authorization", bearer(fixture.customer())))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.bookingReference").value(booking.reference()))
+        .andExpect(jsonPath("$.event.name").value(fixture.event().getName()))
+        .andExpect(jsonPath("$.seat.number").value(fixture.eventSeat().getSeat().getSeatNumber()))
+        .andExpect(jsonPath("$.qrToken").value(ticket.getQrToken()));
+
+    mockMvc
+        .perform(
+            get("/api/v1/tickets/{id}", ticket.getId())
+                .header("Authorization", bearer(otherCustomer)))
+        .andExpect(status().isNotFound());
+
+    ticket.setStatus(com.eventpass.ticket.Ticket.Status.USED);
+    ticket.setUsedAt(Instant.now());
+    tickets.saveAndFlush(ticket);
+    mockMvc
+        .perform(
+            get("/api/v1/tickets/{id}", ticket.getId())
+                .header("Authorization", bearer(fixture.customer())))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.status").value("USED"))
+        .andExpect(jsonPath("$.qrToken").doesNotExist());
   }
 
   @Test
@@ -1494,7 +1560,7 @@ class ConcurrentBookingIntegrationTest {
         registerThroughHttp(email, "registration-password", "  New ", " Customer  ");
 
     assertThat(response.path("accessToken").asText()).isNotBlank();
-    assertThat(response.path("refreshToken").asText()).isNotBlank();
+    assertThat(response.has("refreshToken")).isFalse();
     assertThat(response.path("tokenType").asText()).isEqualTo("Bearer");
     assertThat(response.path("role").asText()).isEqualTo("CUSTOMER");
     User registered = users.findByEmailIgnoreCase(email).orElseThrow();
@@ -1539,16 +1605,21 @@ class ConcurrentBookingIntegrationTest {
                 .content(loginJson(email.toUpperCase(), "correct-login-password")))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.accessToken").isString())
-        .andExpect(jsonPath("$.refreshToken").isString())
+        .andExpect(jsonPath("$.refreshToken").doesNotExist())
         .andExpect(jsonPath("$.tokenType").value("Bearer"))
-        .andExpect(jsonPath("$.role").value("CUSTOMER"));
+        .andExpect(jsonPath("$.role").value("CUSTOMER"))
+        .andExpect(
+            result ->
+                assertThat(result.getResponse().getHeader("Set-Cookie"))
+                    .contains(
+                        "eventpass_refresh=", "HttpOnly", "Path=/api/v1/auth", "SameSite=Lax"));
   }
 
   @Test
   void inactiveAccountCannotLoginOrRefresh() throws Exception {
     String email = "inactive-" + UUID.randomUUID() + "@example.com";
-    JsonNode authentication =
-        registerThroughHttp(email, "inactive-password", "Inactive", "Customer");
+    AuthHttpSession authentication =
+        registerSessionThroughHttp(email, "inactive-password", "Inactive", "Customer");
     User customer = users.findByEmailIgnoreCase(email).orElseThrow();
     customer.setStatus(User.Status.SUSPENDED);
     users.saveAndFlush(customer);
@@ -1563,101 +1634,92 @@ class ConcurrentBookingIntegrationTest {
         .andExpect(jsonPath("$.code").value("INVALID_CREDENTIALS"));
 
     mockMvc
-        .perform(
-            post("/api/v1/auth/refresh")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(tokenJson(authentication.path("refreshToken").asText())))
+        .perform(post("/api/v1/auth/refresh").with(csrf()).cookie(authentication.cookie()))
         .andExpect(status().isUnauthorized())
         .andExpect(jsonPath("$.code").value("INVALID_REFRESH_TOKEN"));
   }
 
   @Test
   void refreshRotatesTheTokenThroughTheAuthenticationApi() throws Exception {
-    JsonNode authentication =
-        registerThroughHttp(
+    AuthHttpSession authentication =
+        registerSessionThroughHttp(
             "rotation-" + UUID.randomUUID() + "@example.com",
             "rotation-password",
             "Rotation",
             "Customer");
-    String originalRefreshToken = authentication.path("refreshToken").asText();
-
-    String body =
+    MvcResult rotation =
         mockMvc
             .perform(
                 post("/api/v1/auth/refresh")
+                    .with(csrf())
+                    .cookie(authentication.cookie())
                     .header("User-Agent", "Replacement device")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content(tokenJson(originalRefreshToken)))
+                    .contentType(MediaType.APPLICATION_JSON))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.accessToken").isString())
-            .andExpect(jsonPath("$.refreshToken").isString())
+            .andExpect(jsonPath("$.refreshToken").doesNotExist())
             .andExpect(jsonPath("$.tokenType").value("Bearer"))
-            .andReturn()
-            .getResponse()
-            .getContentAsString();
-    assertThat(objectMapper.readTree(body).path("refreshToken").asText())
-        .isNotEqualTo(originalRefreshToken);
+            .andReturn();
+    assertThat(refreshCookie(rotation).getValue()).isNotEqualTo(authentication.cookie().getValue());
+  }
+
+  @Test
+  void refreshAndLogoutRejectRequestsWithoutCsrfProof() throws Exception {
+    AuthHttpSession authentication =
+        registerSessionThroughHttp(
+            "csrf-" + UUID.randomUUID() + "@example.com", "csrf-test-password", "Csrf", "Customer");
+
+    mockMvc
+        .perform(post("/api/v1/auth/refresh").cookie(authentication.cookie()))
+        .andExpect(status().isForbidden());
+    mockMvc
+        .perform(post("/api/v1/auth/logout").cookie(authentication.cookie()))
+        .andExpect(status().isForbidden());
   }
 
   @Test
   void logoutRevokesTheRefreshTokenFamily() throws Exception {
-    JsonNode authentication =
-        registerThroughHttp(
+    AuthHttpSession authentication =
+        registerSessionThroughHttp(
             "logout-" + UUID.randomUUID() + "@example.com",
             "logout-password",
             "Logout",
             "Customer");
-    String refreshToken = authentication.path("refreshToken").asText();
-
     mockMvc
-        .perform(
-            post("/api/v1/auth/logout")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(tokenJson(refreshToken)))
+        .perform(post("/api/v1/auth/logout").with(csrf()).cookie(authentication.cookie()))
         .andExpect(status().isNoContent())
-        .andExpect(content().string(""));
+        .andExpect(content().string(""))
+        .andExpect(
+            result ->
+                assertThat(result.getResponse().getHeader("Set-Cookie"))
+                    .contains("eventpass_refresh=", "Max-Age=0"));
     mockMvc
-        .perform(
-            post("/api/v1/auth/refresh")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(tokenJson(refreshToken)))
+        .perform(post("/api/v1/auth/refresh").with(csrf()).cookie(authentication.cookie()))
         .andExpect(status().isUnauthorized())
         .andExpect(jsonPath("$.code").value("REFRESH_TOKEN_REUSE_DETECTED"));
   }
 
   @Test
   void replayedRefreshTokenRevokesItsReplacement() throws Exception {
-    JsonNode authentication =
-        registerThroughHttp(
+    AuthHttpSession authentication =
+        registerSessionThroughHttp(
             "replay-" + UUID.randomUUID() + "@example.com",
             "replay-password",
             "Replay",
             "Customer");
-    String original = authentication.path("refreshToken").asText();
-    String rotationBody =
+    MvcResult rotation =
         mockMvc
-            .perform(
-                post("/api/v1/auth/refresh")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content(tokenJson(original)))
+            .perform(post("/api/v1/auth/refresh").with(csrf()).cookie(authentication.cookie()))
             .andExpect(status().isOk())
-            .andReturn()
-            .getResponse()
-            .getContentAsString();
-    String replacement = objectMapper.readTree(rotationBody).path("refreshToken").asText();
+            .andReturn();
+    jakarta.servlet.http.Cookie replacement = refreshCookie(rotation);
 
     mockMvc
-        .perform(
-            post("/api/v1/auth/refresh")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(tokenJson(original)))
+        .perform(post("/api/v1/auth/refresh").with(csrf()).cookie(authentication.cookie()))
         .andExpect(status().isUnauthorized())
         .andExpect(jsonPath("$.code").value("REFRESH_TOKEN_REUSE_DETECTED"));
     mockMvc
-        .perform(
-            post("/api/v1/auth/refresh")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(tokenJson(replacement)))
+        .perform(post("/api/v1/auth/refresh").with(csrf()).cookie(replacement))
         .andExpect(status().isUnauthorized())
         .andExpect(jsonPath("$.code").value("REFRESH_TOKEN_REUSE_DETECTED"));
   }
@@ -1708,13 +1770,14 @@ class ConcurrentBookingIntegrationTest {
                 "Refresh",
                 "Reuse"),
             "Integration test browser");
-    String body = "{\"refreshToken\":\"" + authentication.refreshToken() + "\"}";
+    jakarta.servlet.http.Cookie cookie =
+        new jakarta.servlet.http.Cookie("eventpass_refresh", authentication.refreshToken());
 
     mockMvc
-        .perform(post("/api/v1/auth/refresh").contentType(MediaType.APPLICATION_JSON).content(body))
+        .perform(post("/api/v1/auth/refresh").with(csrf()).cookie(cookie))
         .andExpect(status().isOk());
     mockMvc
-        .perform(post("/api/v1/auth/refresh").contentType(MediaType.APPLICATION_JSON).content(body))
+        .perform(post("/api/v1/auth/refresh").with(csrf()).cookie(cookie))
         .andExpect(status().isUnauthorized())
         .andExpect(jsonPath("$.code").value("REFRESH_TOKEN_REUSE_DETECTED"));
   }
@@ -1926,12 +1989,27 @@ class ConcurrentBookingIntegrationTest {
         .formatted(email, password);
   }
 
-  private String tokenJson(String refreshToken) {
-    return """
-        {"refreshToken":"%s"}
-        """
-        .formatted(refreshToken);
+  private AuthHttpSession registerSessionThroughHttp(
+      String email, String password, String firstName, String lastName) throws Exception {
+    MvcResult result =
+        mockMvc
+            .perform(
+                post("/api/v1/auth/register")
+                    .with(uniqueAuthClient())
+                    .header("User-Agent", "Authentication integration test")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(registrationJson(email, password, firstName, lastName)))
+            .andExpect(status().isCreated())
+            .andReturn();
+    return new AuthHttpSession(
+        objectMapper.readTree(result.getResponse().getContentAsString()), refreshCookie(result));
   }
+
+  private jakarta.servlet.http.Cookie refreshCookie(MvcResult result) {
+    return Objects.requireNonNull(result.getResponse().getCookie("eventpass_refresh"));
+  }
+
+  private record AuthHttpSession(JsonNode body, jakarta.servlet.http.Cookie cookie) {}
 
   private org.springframework.test.web.servlet.request.RequestPostProcessor uniqueAuthClient() {
     String identity = "auth-test-" + UUID.randomUUID();
