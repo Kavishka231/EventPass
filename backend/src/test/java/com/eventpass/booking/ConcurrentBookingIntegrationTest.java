@@ -24,6 +24,7 @@ import com.eventpass.notification.NotificationRepository;
 import com.eventpass.notification.ProcessedEventService;
 import com.eventpass.payment.Payment;
 import com.eventpass.payment.PaymentProvider;
+import com.eventpass.payment.PaymentReconciliationService;
 import com.eventpass.payment.PaymentRepository;
 import com.eventpass.payment.Refund;
 import com.eventpass.payment.RefundRepository;
@@ -93,6 +94,7 @@ class ConcurrentBookingIntegrationTest {
   @Autowired BookingRepository bookings;
   @Autowired PaymentRepository payments;
   @Autowired PaymentProvider paymentProvider;
+  @Autowired PaymentReconciliationService reconciliationService;
   @Autowired RefundRepository refunds;
   @Autowired TicketRepository tickets;
   @Autowired TicketService ticketService;
@@ -394,6 +396,56 @@ class ConcurrentBookingIntegrationTest {
     assertThat(payments.findAllByReconciliationStatus(Payment.ReconciliationStatus.PENDING))
         .extracting(Payment::getId)
         .contains(payment.getId());
+  }
+
+  @Test
+  void concurrentReconciliationWorkersFinalizeAnUnknownChargeExactlyOnce() throws Exception {
+    BookingFixture fixture = fixture();
+    String key = "payment-reconcile-" + UUID.randomUUID();
+    assertThatThrownBy(
+            () -> service.create(fixture.request("tok_unknown"), key, fixture.customer()))
+        .isInstanceOf(ApiException.class);
+    Booking booking =
+        bookings
+            .findByUserIdAndIdempotencyOperationAndIdempotencyKey(
+                fixture.customer().getId(), "BOOKING_CREATE", key)
+            .orElseThrow();
+
+    try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+      Future<?> first = executor.submit(reconciliationService::reconcileDue);
+      Future<?> second = executor.submit(reconciliationService::reconcileDue);
+      first.get();
+      second.get();
+    }
+
+    Payment payment = payments.findByBookingId(booking.getId()).orElseThrow();
+    assertThat(payment.getStatus()).isEqualTo(Payment.Status.SUCCESS);
+    assertThat(payment.getReconciliationStatus()).isEqualTo(Payment.ReconciliationStatus.RESOLVED);
+    assertThat(payment.getReconciliationAttempts()).isEqualTo(1);
+    assertThat(bookings.findById(booking.getId()).orElseThrow().getStatus())
+        .isEqualTo(Booking.Status.CONFIRMED);
+    assertThat(inventory.findById(fixture.eventSeat().getId()).orElseThrow().getStatus())
+        .isEqualTo(EventSeat.Status.SOLD);
+    assertThat(tickets.findAllByBookingId(booking.getId())).hasSize(1);
+    assertThat(outboxEvents.findAll())
+        .filteredOn(event -> event.getEventType().equals("PAYMENT_RECONCILED_SUCCESS"))
+        .extracting(OutboxEvent::getAggregateId)
+        .containsExactly(booking.getId());
+  }
+
+  @Test
+  void reconciliationEndpointsRequireAdministratorRole() throws Exception {
+    User customer = user("reconciliation-customer@example.com", User.Role.CUSTOMER);
+    User admin = user("reconciliation-admin@example.com", User.Role.ADMIN);
+
+    mockMvc
+        .perform(
+            get("/api/v1/admin/reconciliations/payments").header("Authorization", bearer(customer)))
+        .andExpect(status().isForbidden());
+    mockMvc
+        .perform(
+            get("/api/v1/admin/reconciliations/payments").header("Authorization", bearer(admin)))
+        .andExpect(status().isOk());
   }
 
   @Test

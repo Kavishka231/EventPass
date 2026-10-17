@@ -51,6 +51,15 @@ public class Payment extends BaseEntity {
   @Column(name = "reconciliation_status", nullable = false)
   private ReconciliationStatus reconciliationStatus = ReconciliationStatus.NOT_REQUIRED;
 
+  @Column(name = "reconciliation_attempts", nullable = false)
+  private int reconciliationAttempts;
+
+  @Column(name = "next_reconciliation_at")
+  private Instant nextReconciliationAt;
+
+  @Column(name = "last_reconciled_at")
+  private Instant lastReconciledAt;
+
   public enum Status {
     PENDING,
     PROCESSING,
@@ -63,6 +72,8 @@ public class Payment extends BaseEntity {
   public enum ReconciliationStatus {
     NOT_REQUIRED,
     PENDING,
-    RESOLVED
+    IN_PROGRESS,
+    RESOLVED,
+    MANUAL_REVIEW
   }
 }

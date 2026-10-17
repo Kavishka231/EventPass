@@ -9,6 +9,7 @@ import {
   AdminEventsPage,
   AdminUsersPage,
   AdminVenuePage,
+  AdminReconciliationsPage,
 } from '../pages/AdminPages';
 import { SessionContext } from '../features/session/SessionContext';
 import { page } from './fixtures';
@@ -65,6 +66,43 @@ const booking = {
 };
 
 describe('administrator workspace', () => {
+  it('lists unresolved payments and schedules a safe retry', async () => {
+    const retried = vi.fn();
+    server.use(
+      http.get('*/api/v1/admin/reconciliations/payments', () =>
+        HttpResponse.json(
+          page([
+            {
+              type: 'PAYMENT',
+              id: 'payment-1',
+              bookingId: booking.id,
+              operationStatus: 'UNKNOWN',
+              reconciliationStatus: 'MANUAL_REVIEW',
+              attempts: 8,
+              nextReconciliationAt: null,
+              lastReconciledAt: '2030-01-01T00:00:00Z',
+              lastError: 'Provider unavailable',
+            },
+          ]),
+        ),
+      ),
+      http.post(
+        '*/api/v1/admin/reconciliations/PAYMENT/payment-1/retry',
+        () => {
+          retried();
+          return new HttpResponse(null, { status: 204 });
+        },
+      ),
+    );
+    renderWithApp(<AdminReconciliationsPage />, '/admin/reconciliations');
+
+    expect(await screen.findByText('Provider unavailable')).toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole('button', { name: /retry status lookup/i }),
+    );
+    await waitFor(() => expect(retried).toHaveBeenCalledOnce());
+  });
+
   it('shows the operational dashboard totals', async () => {
     server.use(
       http.get('*/api/v1/admin/statistics', () =>

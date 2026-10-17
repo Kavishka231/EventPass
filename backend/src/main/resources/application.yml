@@ -79,6 +79,12 @@ eventpass:
   outbox:
     enabled: ${OUTBOX_ENABLED:true}
     publish-delay: PT2S
+  reconciliation:
+    batch-size: ${RECONCILIATION_BATCH_SIZE:25}
+    maximum-attempts: ${RECONCILIATION_MAXIMUM_ATTEMPTS:8}
+    base-delay: ${RECONCILIATION_BASE_DELAY:PT30S}
+    claim-lease: ${RECONCILIATION_CLAIM_LEASE:PT2M}
+    scan-delay: ${RECONCILIATION_SCAN_DELAY:PT15S}
   kafka:
     provisioning-enabled: ${KAFKA_TOPIC_PROVISIONING_ENABLED:true}
     topics:

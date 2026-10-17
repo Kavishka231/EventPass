@@ -25,17 +25,24 @@ public abstract class IdempotentPaymentProvider implements PaymentProvider {
     StoredCharge stored =
         charges.compute(
             idempotencyKey,
-            (key, existing) -> {
-              if (existing == null) {
+            (key, current) -> {
+              if (current != null) {
+                if (!current.requestHash().equals(requestHash)) {
+                  throw new PaymentIdempotencyException(
+                      "Payment idempotency key was reused with different charge details.");
+                }
+                return current;
+              }
+              try {
                 return new StoredCharge(
                     requestHash, performCharge(providerToken, amount, currency, key));
+              } catch (PaymentProviderException exception) {
+                return new StoredCharge(requestHash, null);
               }
-              if (!existing.requestHash().equals(requestHash)) {
-                throw new PaymentIdempotencyException(
-                    "Payment idempotency key was reused with different charge details.");
-              }
-              return existing;
             });
+    if (stored.result() == null) {
+      throw new PaymentProviderException("Payment provider outcome remains unknown.");
+    }
     return stored.result();
   }
 
@@ -52,18 +59,95 @@ public abstract class IdempotentPaymentProvider implements PaymentProvider {
     StoredRefund stored =
         refunds.compute(
             idempotencyKey,
-            (key, existing) -> {
-              if (existing == null) {
+            (key, current) -> {
+              if (current != null) {
+                if (!current.requestHash().equals(requestHash)) {
+                  throw new PaymentIdempotencyException(
+                      "Refund idempotency key was reused with different refund details.");
+                }
+                return current;
+              }
+              try {
                 return new StoredRefund(
                     requestHash, performRefund(paymentReference, amount, currency, key));
+              } catch (PaymentProviderException exception) {
+                return new StoredRefund(requestHash, null);
               }
-              if (!existing.requestHash().equals(requestHash)) {
-                throw new PaymentIdempotencyException(
-                    "Refund idempotency key was reused with different refund details.");
-              }
-              return existing;
             });
+    if (stored.result() == null) {
+      throw new PaymentProviderException("Refund provider outcome remains unknown.");
+    }
     return stored.result();
+  }
+
+  @Override
+  public final ReconciliationResult lookupCharge(String idempotencyKey) {
+    StoredCharge stored = charges.get(idempotencyKey);
+    if (stored == null) return pending();
+    if (stored.result() != null) return reconciliation(stored.result());
+    ReconciliationResult result = performChargeLookup(idempotencyKey);
+    if (result.outcome() != ReconciliationResult.Outcome.PENDING) {
+      charges.computeIfPresent(
+          idempotencyKey,
+          (key, value) ->
+              new StoredCharge(
+                  value.requestHash(),
+                  new PaymentResult(
+                      result.outcome() == ReconciliationResult.Outcome.SUCCESS,
+                      result.reference(),
+                      result.failureCode())));
+    }
+    return result;
+  }
+
+  @Override
+  public final ReconciliationResult lookupRefund(String idempotencyKey) {
+    StoredRefund stored = refunds.get(idempotencyKey);
+    if (stored == null) return pending();
+    if (stored.result() != null) return reconciliation(stored.result());
+    ReconciliationResult result = performRefundLookup(idempotencyKey);
+    if (result.outcome() != ReconciliationResult.Outcome.PENDING) {
+      refunds.computeIfPresent(
+          idempotencyKey,
+          (key, value) ->
+              new StoredRefund(
+                  value.requestHash(),
+                  new RefundResult(
+                      result.outcome() == ReconciliationResult.Outcome.SUCCESS,
+                      result.reference(),
+                      result.failureCode())));
+    }
+    return result;
+  }
+
+  protected ReconciliationResult performChargeLookup(String idempotencyKey) {
+    return pending();
+  }
+
+  protected ReconciliationResult performRefundLookup(String idempotencyKey) {
+    return pending();
+  }
+
+  private ReconciliationResult reconciliation(PaymentResult result) {
+    return new ReconciliationResult(
+        result.successful()
+            ? ReconciliationResult.Outcome.SUCCESS
+            : ReconciliationResult.Outcome.FAILED,
+        result.reference(),
+        result.failureCode());
+  }
+
+  private ReconciliationResult reconciliation(RefundResult result) {
+    return new ReconciliationResult(
+        result.successful()
+            ? ReconciliationResult.Outcome.SUCCESS
+            : ReconciliationResult.Outcome.FAILED,
+        result.reference(),
+        result.failureCode());
+  }
+
+  private ReconciliationResult pending() {
+    return new ReconciliationResult(ReconciliationResult.Outcome.PENDING, null, null);
   }
 
   protected abstract RefundResult performRefund(

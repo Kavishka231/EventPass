@@ -4,3 +4,4 @@ spring:
 eventpass.jwt.secret: integration-test-secret-at-least-32-characters-long
 eventpass.outbox.enabled: false
 eventpass.kafka.provisioning-enabled: false
+eventpass.reconciliation.scan-delay: PT24H

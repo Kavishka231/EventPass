@@ -6,6 +6,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.eventpass.common.metrics.BusinessMetrics;
+import com.eventpass.payment.PaymentRepository;
+import com.eventpass.payment.RefundRepository;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Instant;
 import java.util.List;
@@ -29,7 +31,11 @@ class OutboxPublisherTest {
         .thenReturn(CompletableFuture.completedFuture(null));
     SimpleMeterRegistry meters = new SimpleMeterRegistry();
     OutboxPublisher publisher =
-        new OutboxPublisher(repository, kafka, new BusinessMetrics(meters, repository));
+        new OutboxPublisher(
+            repository,
+            kafka,
+            new BusinessMetrics(
+                meters, repository, mock(PaymentRepository.class), mock(RefundRepository.class)));
 
     publisher.publish();
 

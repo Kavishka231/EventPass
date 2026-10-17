@@ -12,6 +12,7 @@ import type {
   PaginationParameters,
   UpdateUserRequest,
   VenueRequest,
+  ReconciliationType,
 } from '../../types';
 import { adminService } from './adminService';
 export const useAdminStatistics = () =>
@@ -68,6 +69,15 @@ export const useAdminBooking = (id: string) =>
     queryFn: () => adminService.booking(id),
     enabled: Boolean(id),
   });
+export const useAdminReconciliations = (
+  type: 'payments' | 'refunds',
+  p: PaginationParameters,
+) =>
+  useQuery({
+    queryKey: queryKeys.admin.reconciliations(type, p),
+    queryFn: () => adminService.reconciliations(type, p),
+    placeholderData: keepPreviousData,
+  });
 const invalidate = (
   client: ReturnType<typeof useQueryClient>,
   key: readonly unknown[],
@@ -120,6 +130,14 @@ export function useCancelAdminBooking() {
   const c = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => adminService.cancelBooking(id),
+    onSuccess: () => invalidate(c, queryKeys.admin.all),
+  });
+}
+export function useRetryReconciliation() {
+  const c = useQueryClient();
+  return useMutation({
+    mutationFn: ({ type, id }: { type: ReconciliationType; id: string }) =>
+      adminService.retryReconciliation(type, id),
     onSuccess: () => invalidate(c, queryKeys.admin.all),
   });
 }

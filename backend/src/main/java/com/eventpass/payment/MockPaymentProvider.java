@@ -42,6 +42,18 @@ public class MockPaymentProvider extends IdempotentPaymentProvider {
     return new RefundResult(true, "mock_refund_" + UUID.randomUUID(), null);
   }
 
+  @Override
+  protected ReconciliationResult performChargeLookup(String idempotencyKey) {
+    return new ReconciliationResult(
+        ReconciliationResult.Outcome.SUCCESS, "mock_reconciled_" + UUID.randomUUID(), null);
+  }
+
+  @Override
+  protected ReconciliationResult performRefundLookup(String idempotencyKey) {
+    return new ReconciliationResult(
+        ReconciliationResult.Outcome.SUCCESS, "mock_refund_reconciled_" + UUID.randomUUID(), null);
+  }
+
   @FunctionalInterface
   interface ChargeExecutor {
     PaymentResult charge(String token, BigDecimal amount, String currency, String key);

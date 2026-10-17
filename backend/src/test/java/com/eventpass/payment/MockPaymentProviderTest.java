@@ -63,4 +63,22 @@ class MockPaymentProviderTest {
     assertThatThrownBy(() -> provider.charge("tok_success", BigDecimal.ONE, "LKR", "payload-key"))
         .isInstanceOf(PaymentIdempotencyException.class);
   }
+
+  @Test
+  void ambiguousChargeCanBeResolvedByItsIdempotencyKey() {
+    assertThatThrownBy(() -> provider.charge("tok_unknown", BigDecimal.TEN, "LKR", "unknown-key"))
+        .isInstanceOf(PaymentProviderException.class);
+
+    PaymentProvider.ReconciliationResult result = provider.lookupCharge("unknown-key");
+
+    assertThat(result.outcome()).isEqualTo(PaymentProvider.ReconciliationResult.Outcome.SUCCESS);
+    assertThat(result.reference()).startsWith("mock_reconciled_");
+    assertThat(provider.lookupCharge("unknown-key").reference()).isEqualTo(result.reference());
+  }
+
+  @Test
+  void unknownProviderKeyRemainsPending() {
+    assertThat(provider.lookupCharge("missing-key").outcome())
+        .isEqualTo(PaymentProvider.ReconciliationResult.Outcome.PENDING);
+  }
 }

@@ -17,6 +17,7 @@ import type {
   UpdateUserRequest,
   VenueRequest,
   VenueResponse,
+  ReconciliationResponse,
 } from '../../types';
 import { decodeOrganizerEvent } from '../organizer';
 
@@ -89,6 +90,29 @@ const statisticsDecoder = (value: unknown): AdminStatisticsResponse => {
     venues: number(o, 'venues'),
     bookings: number(o, 'bookings'),
     confirmedBookings: number(o, 'confirmedBookings'),
+  };
+};
+const nullableText = (o: Record<string, unknown>, f: string) => {
+  const v = o[f];
+  if (v === null || v === undefined) return null;
+  if (typeof v !== 'string') throw new Error(`Expected ${f}.`);
+  return v;
+};
+const reconciliationDecoder = (value: unknown): ReconciliationResponse => {
+  const o = objectResponseDecoder(value);
+  return {
+    type: text(o, 'type') as ReconciliationResponse['type'],
+    id: text(o, 'id'),
+    bookingId: text(o, 'bookingId'),
+    operationStatus: text(o, 'operationStatus'),
+    reconciliationStatus: text(
+      o,
+      'reconciliationStatus',
+    ) as ReconciliationResponse['reconciliationStatus'],
+    attempts: number(o, 'attempts'),
+    nextReconciliationAt: nullableText(o, 'nextReconciliationAt'),
+    lastReconciledAt: nullableText(o, 'lastReconciledAt'),
+    lastError: nullableText(o, 'lastError'),
   };
 };
 const params = (p: PaginationParameters) => ({
@@ -197,6 +221,22 @@ export const adminService = {
   async cancelBooking(id: string) {
     await apiClient.post(
       `/admin/bookings/${id}/cancel`,
+      undefined,
+      emptyResponseDecoder,
+    );
+  },
+  async reconciliations(type: 'payments' | 'refunds', p: PaginationParameters) {
+    return (
+      await apiClient.get(
+        `/admin/reconciliations/${type}`,
+        paginatedResponseDecoder(reconciliationDecoder),
+        { query: params(p) },
+      )
+    ).data;
+  },
+  async retryReconciliation(type: 'PAYMENT' | 'REFUND', id: string) {
+    await apiClient.post(
+      `/admin/reconciliations/${type}/${id}/retry`,
       undefined,
       emptyResponseDecoder,
     );

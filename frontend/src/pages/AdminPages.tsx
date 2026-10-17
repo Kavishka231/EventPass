@@ -22,6 +22,7 @@ import {
 import {
   useAdminBooking,
   useAdminBookings,
+  useAdminReconciliations,
   useAdminEvent,
   useAdminEvents,
   useAdminSeats,
@@ -36,6 +37,7 @@ import {
   useUpdateAdminEvent,
   useUpdateUser,
   useVenueMutation,
+  useRetryReconciliation,
 } from '../features/admin';
 import { useSession } from '../features/session';
 import type {
@@ -71,6 +73,99 @@ function Header({
       </div>
       {action}
     </header>
+  );
+}
+
+export function AdminReconciliationsPage() {
+  const { page, setPage } = usePage();
+  const [type, setType] = useState<'payments' | 'refunds'>('payments');
+  const records = useAdminReconciliations(type, {
+    page: page - 1,
+    size: SIZE,
+    sort: 'createdAt,desc',
+  });
+  const retry = useRetryReconciliation();
+  return (
+    <Section>
+      <Container>
+        <Header
+          title="Payment reconciliation"
+          description="Review ambiguous provider outcomes and safely schedule another status lookup."
+        />
+        <div className="toolbar">
+          <Label>
+            Operation
+            <Select
+              value={type}
+              onChange={(event) => {
+                setType(event.target.value as 'payments' | 'refunds');
+                setPage(1);
+              }}
+            >
+              <option value="payments">Payments</option>
+              <option value="refunds">Refunds</option>
+            </Select>
+          </Label>
+        </div>
+        {records.isLoading ? (
+          <Skeleton className="organizer-form-skeleton" />
+        ) : null}
+        {records.isError ? (
+          <Failure retry={() => void records.refetch()} />
+        ) : null}
+        {records.data?.content.length === 0 ? (
+          <EmptyState
+            title="No unresolved outcomes"
+            description="Provider outcomes requiring reconciliation will appear here."
+          />
+        ) : null}
+        {records.data?.content.map((record) => (
+          <Card key={record.id} className="admin-booking-detail">
+            <Stack gap="3">
+              <div>
+                <Badge>{record.reconciliationStatus}</Badge>{' '}
+                <strong>{record.type}</strong> · attempt {record.attempts}
+              </div>
+              <div>
+                Booking{' '}
+                <Link to={`/admin/bookings/${record.bookingId}`}>
+                  {record.bookingId}
+                </Link>
+              </div>
+              {record.lastError ? (
+                <Alert tone="error" title="Last provider error">
+                  {record.lastError}
+                </Alert>
+              ) : null}
+              <div>
+                {record.nextReconciliationAt
+                  ? `Next lookup ${new Date(record.nextReconciliationAt).toLocaleString()}`
+                  : 'Automatic retries exhausted; manual review is required.'}
+              </div>
+              {record.reconciliationStatus !== 'IN_PROGRESS' ? (
+                <Button
+                  variant="outline"
+                  loading={retry.isPending && retry.variables?.id === record.id}
+                  onClick={() =>
+                    retry.mutate({ type: record.type, id: record.id })
+                  }
+                >
+                  Retry status lookup
+                </Button>
+              ) : null}
+            </Stack>
+          </Card>
+        ))}
+        {records.data ? (
+          <Pager
+            page={page}
+            total={records.data.totalPages}
+            busy={records.isFetching}
+            setPage={setPage}
+          />
+        ) : null}
+      </Container>
+    </Section>
   );
 }
 function Pager({

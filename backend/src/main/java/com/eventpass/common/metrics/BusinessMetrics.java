@@ -2,6 +2,9 @@ package com.eventpass.common.metrics;
 
 import com.eventpass.common.outbox.OutboxEvent;
 import com.eventpass.common.outbox.OutboxEventRepository;
+import com.eventpass.payment.Payment;
+import com.eventpass.payment.PaymentRepository;
+import com.eventpass.payment.RefundRepository;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -20,8 +23,14 @@ public class BusinessMetrics {
   private final Counter expirations;
   private final Counter kafkaFailures;
   private final Counter notificationFailures;
+  private final MeterRegistry registry;
 
-  public BusinessMetrics(MeterRegistry registry, OutboxEventRepository outboxEvents) {
+  public BusinessMetrics(
+      MeterRegistry registry,
+      OutboxEventRepository outboxEvents,
+      PaymentRepository payments,
+      RefundRepository refunds) {
+    this.registry = registry;
     bookingAttempts = registry.counter("eventpass.booking.attempts");
     bookingSuccesses = registry.counter("eventpass.booking.successes");
     bookingFailures = registry.counter("eventpass.booking.failures");
@@ -40,6 +49,7 @@ public class BusinessMetrics {
         .description("Number of outbox events waiting for publication")
         .tag("status", "pending")
         .register(registry);
+    reconciliationGauges(registry, payments, refunds);
     Gauge.builder(
             "eventpass.outbox.backlog",
             outboxEvents,
@@ -91,5 +101,55 @@ public class BusinessMetrics {
 
   public void notificationFailed() {
     notificationFailures.increment();
+  }
+
+  public void reconciliationSucceeded(String type) {
+    registry.counter("eventpass.reconciliation.successes", "type", type).increment();
+  }
+
+  public void reconciliationFailed(String type) {
+    registry.counter("eventpass.reconciliation.failures", "type", type).increment();
+  }
+
+  private void reconciliationGauges(
+      MeterRegistry registry, PaymentRepository payments, RefundRepository refunds) {
+    Gauge.builder(
+            "eventpass.reconciliation.backlog",
+            payments,
+            repository ->
+                repository.countByReconciliationStatusIn(
+                    java.util.EnumSet.of(
+                        Payment.ReconciliationStatus.PENDING,
+                        Payment.ReconciliationStatus.IN_PROGRESS)))
+        .tag("type", "payment")
+        .tag("status", "pending")
+        .register(registry);
+    Gauge.builder(
+            "eventpass.reconciliation.backlog",
+            refunds,
+            repository ->
+                repository.countByReconciliationStatusIn(
+                    java.util.EnumSet.of(
+                        Payment.ReconciliationStatus.PENDING,
+                        Payment.ReconciliationStatus.IN_PROGRESS)))
+        .tag("type", "refund")
+        .tag("status", "pending")
+        .register(registry);
+    Gauge.builder(
+            "eventpass.reconciliation.backlog",
+            payments,
+            repository ->
+                repository.countByReconciliationStatus(Payment.ReconciliationStatus.MANUAL_REVIEW))
+        .tag("type", "payment")
+        .tag("status", "manual_review")
+        .register(registry);
+    Gauge.builder(
+            "eventpass.reconciliation.backlog",
+            refunds,
+            repository ->
+                repository.countByReconciliationStatus(Payment.ReconciliationStatus.MANUAL_REVIEW))
+        .tag("type", "refund")
+        .tag("status", "manual_review")
+        .register(registry);
   }
 }

@@ -18,10 +18,16 @@ Booking uses defense in depth:
 
 Cancellation uses the same boundary: a `PENDING` refund linked to both payment and booking is committed before the provider call. A locked finalization transaction records the provider result and only then marks the payment refunded, cancels tickets and booking, and releases inventory. Unknown outcomes remain reconciliation-pending without releasing seats.
 
+## Financial reconciliation
+
+The payment provider exposes read-only charge and refund lookup operations keyed by the original idempotency key. A scheduled worker claims bounded due batches with PostgreSQL `FOR UPDATE SKIP LOCKED`, changes each record to `IN_PROGRESS`, and grants a short lease. This prevents two application instances from resolving the same record while allowing another instance to recover an abandoned claim after the lease expires. Provider calls run without an open database transaction.
+
+Definitive lookup results enter the existing locked payment/refund finalization transactions, so normal requests and reconciliation share booking, inventory, ticket, and outbox transition code. Non-definitive results return to `PENDING` with capped exponential delay. Exhausted records enter terminal `MANUAL_REVIEW`; an administrator can schedule another lookup but cannot repeat the underlying financial operation. Reconciled success, reconciled failure, and manual-review transitions are transactional outbox events.
+
 ## Event delivery
 
 Business transactions write version-1 event envelopes and domain state to PostgreSQL atomically. Every envelope has exactly `eventId`, `eventType`, `version`, `timestamp`, `aggregateId`, and `payload`; consumers deserialize this shared contract, while aliases allow already-persisted legacy envelopes to drain safely. Each publisher claims due rows with PostgreSQL `FOR UPDATE SKIP LOCKED`. Failures use persisted capped exponential schedules, explicit failed states, and administrator recovery. Kafka primary topics are provisioned with explicit partition, retention, replication, and minimum in-sync replica settings; automatic topic creation is disabled. Consumers use read-committed isolation and bounded exponential retries before publishing the unchanged record to a same-partition `.DLT`. The notification consumer resolves a booking event to its customer and commits the processed-event claim with the durable notification in one transaction. Delivery remains at least once, with consumer idempotency keyed by envelope event ID and reinforced by the notification source-event constraint.
 
 ## Operational boundaries
 
-Request and correlation filters propagate safe identifiers into structured production logs. Redis rate limits sensitive write endpoints. Actuator readiness evaluates PostgreSQL, Redis, and Kafka, while liveness remains tied to application process state. Prometheus exports HTTP metrics and explicit booking, payment-failure, and seat-lock counters.
+Request and correlation filters propagate safe identifiers into structured production logs. Redis rate limits sensitive write endpoints. Actuator readiness evaluates PostgreSQL, Redis, and Kafka, while liveness remains tied to application process state. Prometheus exports HTTP metrics, business counters, reconciliation success/failure counters, and payment/refund backlog gauges tagged as pending or manual review.

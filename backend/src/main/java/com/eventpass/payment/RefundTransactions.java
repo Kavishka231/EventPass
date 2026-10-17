@@ -151,6 +151,33 @@ public class RefundTransactions {
     String message = providerError.getMessage();
     if (message == null || message.isBlank()) message = "Refund provider outcome was unknown.";
     refund.markUnknown(message.substring(0, Math.min(message.length(), 500)));
+    refund.setNextReconciliationAt(Instant.now());
+  }
+
+  @Transactional
+  public boolean reconcile(UUID refundId, PaymentProvider.ReconciliationResult result) {
+    Refund refund = lockRefund(refundId);
+    if (refund.getStatus() != Refund.Status.UNKNOWN
+        || refund.getReconciliationStatus() != Payment.ReconciliationStatus.IN_PROGRESS) {
+      return false;
+    }
+    refund.setLastReconciledAt(Instant.now());
+    refund.setStatus(Refund.Status.PROCESSING);
+    boolean successful =
+        complete(
+            refundId,
+            new PaymentProvider.RefundResult(
+                result.outcome() == PaymentProvider.ReconciliationResult.Outcome.SUCCESS,
+                result.reference(),
+                result.failureCode()));
+    refund.setReconciliationStatus(Payment.ReconciliationStatus.RESOLVED);
+    refund.setNextReconciliationAt(null);
+    outbox.record(
+        "payment.events",
+        successful ? "REFUND_RECONCILED_SUCCESS" : "REFUND_RECONCILED_FAILED",
+        refund.getBooking().getId(),
+        Map.of("bookingId", refund.getBooking().getId(), "refundId", refundId));
+    return true;
   }
 
   private PreparedRefund replay(Refund refund, Payment payment) {

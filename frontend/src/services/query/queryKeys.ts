@@ -67,5 +67,7 @@ export const queryKeys = {
       [...queryKeys.admin.all, 'users', pagination] as const,
     bookings: (filters: AdminBookingSearchParameters) =>
       [...queryKeys.admin.all, 'bookings', filters] as const,
+    reconciliations: (type: string, pagination: PaginationParameters) =>
+      [...queryKeys.admin.all, 'reconciliations', type, pagination] as const,
   },
 } as const;

@@ -55,6 +55,15 @@ public class Refund extends BaseEntity {
   private Payment.ReconciliationStatus reconciliationStatus =
       Payment.ReconciliationStatus.NOT_REQUIRED;
 
+  @Column(name = "reconciliation_attempts", nullable = false)
+  private int reconciliationAttempts;
+
+  @Column(name = "next_reconciliation_at")
+  private Instant nextReconciliationAt;
+
+  @Column(name = "last_reconciled_at")
+  private Instant lastReconciledAt;
+
   public void markProcessing(Instant now) {
     requireStatus(Status.PENDING);
     status = Status.PROCESSING;

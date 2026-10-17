@@ -18,6 +18,8 @@ The application provisions its domain and dead-letter topics by default. Product
 
 Optional `BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD` values create the initial administrator only when the email does not exist; remove them afterward. The production profile has no JWT fallback. Outbox publication can be disabled temporarily with `OUTBOX_ENABLED=false`, but normal production operation requires Kafka and the default enabled publisher.
 
+Financial reconciliation is enabled by the scheduled application worker. Tune `RECONCILIATION_BATCH_SIZE`, `RECONCILIATION_MAXIMUM_ATTEMPTS`, `RECONCILIATION_BASE_DELAY`, `RECONCILIATION_CLAIM_LEASE`, and `RECONCILIATION_SCAN_DELAY` only after measuring provider latency and deployment failover time. The claim lease must exceed the provider status-query timeout. Alert on `eventpass.reconciliation.backlog{status="manual_review"}` and sustained pending growth; operators should inspect the provider before using the admin retry action. That action schedules a read-only lookup and never resubmits a charge or refund.
+
 ## PostgreSQL backup and recovery
 
 Use the versioned scripts and full operator runbook in [`ops/postgres/README.md`](ops/postgres/README.md). Backups use PostgreSQL custom format, atomic publication, SHA-256 verification, and prefix-scoped retention. Recovery verification restores into a disposable database and validates the EventPass schema and Flyway history. Restore requires an exact target-database confirmation and runs transactionally. Schedule backups and independent restore verification according to documented recovery-point and recovery-time objectives, retain encrypted off-site copies, and alert on failed or stale backups.

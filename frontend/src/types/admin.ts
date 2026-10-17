@@ -51,3 +51,18 @@ export interface AdminBookingSearchParameters {
   size?: number;
   sort?: string | readonly string[];
 }
+
+export type ReconciliationType = 'PAYMENT' | 'REFUND';
+export type ReconciliationStatus = 'PENDING' | 'IN_PROGRESS' | 'MANUAL_REVIEW';
+
+export interface ReconciliationResponse {
+  type: ReconciliationType;
+  id: Uuid;
+  bookingId: Uuid;
+  operationStatus: string;
+  reconciliationStatus: ReconciliationStatus;
+  attempts: number;
+  nextReconciliationAt: IsoInstant | null;
+  lastReconciledAt: IsoInstant | null;
+  lastError: string | null;
+}

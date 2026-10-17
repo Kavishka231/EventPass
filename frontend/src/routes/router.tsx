@@ -11,6 +11,7 @@ import {
   AdminUsersPage,
   AdminVenuePage,
   AdminVenuesPage,
+  AdminReconciliationsPage,
 } from '../pages/AdminPages';
 import { BookingConfirmationPage } from '../pages/BookingConfirmationPage';
 import { BookingDetailsPage } from '../pages/BookingDetailsPage';
@@ -45,6 +46,7 @@ const administratorNavigation = [
   { label: 'Venues', to: '/admin/venues' },
   { label: 'Events', to: '/admin/events' },
   { label: 'Bookings', to: '/admin/bookings' },
+  { label: 'Reconciliation', to: '/admin/reconciliations' },
   { label: 'Admission', to: '/admission' },
 ];
 
@@ -79,6 +81,7 @@ export const applicationRoutes = {
     '/admin/events/:eventId',
     '/admin/bookings',
     '/admin/bookings/:bookingId',
+    '/admin/reconciliations',
   ],
   admission: ['/admission'],
   system: ['/unauthorized', '*'],
@@ -223,6 +226,10 @@ export const router = createBrowserRouter([
       {
         path: 'admin/bookings/:bookingId',
         element: <AdminBookingPage />,
+      },
+      {
+        path: 'admin/reconciliations',
+        element: <AdminReconciliationsPage />,
       },
     ],
   },

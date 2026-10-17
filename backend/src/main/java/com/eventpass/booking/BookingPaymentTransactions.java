@@ -28,7 +28,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-class BookingPaymentTransactions {
+public class BookingPaymentTransactions {
   private static final String BOOKING_TOPIC = "booking.events";
   private static final String PAYMENT_TOPIC = "payment.events";
   private static final String TICKET_TOPIC = "ticket.events";
@@ -184,12 +184,38 @@ class BookingPaymentTransactions {
     if (payment.getStatus() != Payment.Status.PROCESSING) return;
     payment.setStatus(Payment.Status.UNKNOWN);
     payment.setReconciliationStatus(Payment.ReconciliationStatus.PENDING);
+    payment.setNextReconciliationAt(Instant.now());
     payment.setLastError(safeError(providerError));
     outbox.record(
         PAYMENT_TOPIC,
         "PAYMENT_RECONCILIATION_REQUIRED",
         booking.getId(),
         Map.of("bookingId", booking.getId(), "paymentId", payment.getId()));
+  }
+
+  @Transactional
+  public boolean reconcile(UUID bookingId, PaymentProvider.ReconciliationResult result) {
+    Payment payment = lockPayment(bookingId);
+    if (payment.getStatus() != Payment.Status.UNKNOWN
+        || payment.getReconciliationStatus() != Payment.ReconciliationStatus.IN_PROGRESS) {
+      return false;
+    }
+    payment.setLastReconciledAt(Instant.now());
+    PaymentProvider.PaymentResult definitive =
+        new PaymentProvider.PaymentResult(
+            result.outcome() == PaymentProvider.ReconciliationResult.Outcome.SUCCESS,
+            result.reference(),
+            result.failureCode());
+    payment.setStatus(Payment.Status.PROCESSING);
+    complete(bookingId, definitive);
+    payment.setReconciliationStatus(Payment.ReconciliationStatus.RESOLVED);
+    payment.setNextReconciliationAt(null);
+    outbox.record(
+        PAYMENT_TOPIC,
+        definitive.successful() ? "PAYMENT_RECONCILED_SUCCESS" : "PAYMENT_RECONCILED_FAILED",
+        bookingId,
+        Map.of("bookingId", bookingId, "paymentId", payment.getId()));
+    return true;
   }
 
   private String safeError(RuntimeException exception) {
